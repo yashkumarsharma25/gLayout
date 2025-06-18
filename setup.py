@@ -1,12 +1,18 @@
 from setuptools import setup, find_packages
+from pathlib import Path
+
+# Read README.md
+this_directory = Path(__file__).parent
+long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="glayout",
     version="0.1.0",
     description="A PDK-agnostic layout automation framework for analog circuit design",
+    long_description=long_description,
+    long_description_content_type="text/markdown",  # <== Important for Markdown rendering
     author="OpenFASOC Team",
     author_email="mehdi@umich.edu",
-    #packages=find_packages(),
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     install_requires=[
@@ -42,4 +48,4 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3.10",
     ],
-) 
+)
