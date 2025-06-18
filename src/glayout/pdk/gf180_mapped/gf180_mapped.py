@@ -1,11 +1,16 @@
 """
-GF180 PDK implementation for Glayout.
+usage: from gf180_mapped import gf180_mapped_pdk
 """
 
+from ..gf180_mapped.grules import grulesobj
+from ..mappedpdk import MappedPDK, SetupPDKFiles
 from pathlib import Path
-from .mappedpdk import MappedPDK, SetupPDKFiles
 import os
-# Layer definitions for GF180
+
+# Actual Pin definations for GlobalFoundries 180nmMCU from the PDK manual
+# Ref: https://gf180mcu-pdk.readthedocs.io/en/latest/
+
+#LAYER["fusetop"]=(75, 0)
 LAYER = {
     "metal5": (81, 0),
     "via4": (41, 0),
@@ -25,17 +30,16 @@ LAYER = {
     "lvpwell": (204, 0),
     "dnwell": (12, 0),
     "CAP_MK": (117, 5),
-    # Label layers
-    "metal5_label": (81, 10),
-    "metal4_label": (46, 10),
-    "metal3_label": (42, 10),
-    "metal2_label": (36, 10),
-    "metal1_label": (34, 10),
-    "poly2_label": (30, 10),
-    "comp_label": (22, 10),
+    # _Label Layer Definations
+    "metal5_label": (81,10),
+    "metal4_label": (46,10),
+    "metal3_label": (42,10),
+    "metal2_label": (36,10),
+    "metal1_label": (34,10),
+    "poly2_label": (30,10),
+    "comp_label": (22,10),
 }
 
-# Generic layer mapping for GF180
 gf180_glayer_mapping = {
     "met5": "metal5",
     "via4": "via4",
@@ -56,7 +60,7 @@ gf180_glayer_mapping = {
     "pwell": "lvpwell",
     "dnwell": "dnwell",
     "capmet": "CAP_MK",
-    # Pin layers
+    # _pin layer ampping
     "met5_pin": "metal5_label",
     "met4_pin": "metal4_label",
     "met3_pin": "metal3_label",
@@ -64,7 +68,7 @@ gf180_glayer_mapping = {
     "met1_pin": "metal1_label",
     "poly_pin": "poly2_label",
     "active_diff_pin": "comp_label",
-    # Label layers
+    # _label layer mapping
     "met5_label": "metal5_label",
     "met4_label": "metal4_label",
     "met3_label": "metal3_label",
@@ -74,19 +78,22 @@ gf180_glayer_mapping = {
     "active_diff_label": "comp_label",
 }
 
-# PDK file paths
-#pdk_root = Path('/usr/bin/miniconda3/share/pdk/')
+# note for DRC, there is mim_option 'A'. This is the one configured for use
+
+gf180_lydrc_file_path = Path(__file__).resolve().parent / "gf180mcu_drc.lydrc"
+
+# openfasoc_dir = Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent
+# pdk_root = Path('/usr/bin/miniconda3/share/pdk/')
 pdk_root = Path(os.getenv('PDK_ROOT'))
-klayout_drc_file = Path(__file__).parent / "gf180mcu_drc.lydrc"
-lvs_schematic_ref_file = pdk_root / "gf180mcuC" / "libs.ref" / "gf180mcu_osu_sc_9T" / "spice" / "gf180mcu_osu_sc_9T.spice"
-lvs_setup_tcl_file = pdk_root / "gf180mcuC" / "libs.tech" / "netgen" / "gf180mcuC_setup.tcl"
+lvs_schematic_ref_file = Path(__file__).resolve().parent / "gf180mcu_osu_sc_9T.spice"
 magic_drc_file = pdk_root / "gf180mcuC" / "libs.tech" / "magic" / "gf180mcuC.magicrc"
+lvs_setup_tcl_file = pdk_root / "gf180mcuC" / "libs.tech" / "netgen" / "gf180mcuC_setup.tcl"
 temp_dir = None
 
-# Setup PDK files
+
 pdk_files = SetupPDKFiles(
     pdk_root=pdk_root,
-    klayout_drc_file=klayout_drc_file,
+    klayout_drc_file=gf180_lydrc_file_path,
     lvs_schematic_ref_file=lvs_schematic_ref_file,
     lvs_setup_tcl_file=lvs_setup_tcl_file,
     magic_drc_file=magic_drc_file,
@@ -94,19 +101,19 @@ pdk_files = SetupPDKFiles(
     pdk='gf180'
 ).return_dict_of_files()
 
-# Create the GF180 PDK instance
 gf180_mapped_pdk = MappedPDK(
     name="gf180",
     glayers=gf180_glayer_mapping,
-    models={
+	models={
         'nfet': 'nfet_03v3',
-        'pfet': 'pfet_03v3',
-        'mimcap': 'mimcap_1p0fF'
+		'pfet': 'pfet_03v3',
+		'mimcap': 'mimcap_1p0fF'
     },
     layers=LAYER,
     pdk_files=pdk_files,
+    grules=grulesobj,
 )
 
-# Configure PDK settings
-gf180_mapped_pdk.gds_write_settings.precision = 5e-9
-gf180_mapped_pdk.cell_decorator_settings.cache = False 
+# configure the grid size and other settings
+gf180_mapped_pdk.gds_write_settings.precision = 5*10**-9
+gf180_mapped_pdk.cell_decorator_settings.cache=False
