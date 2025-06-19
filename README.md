@@ -18,7 +18,7 @@ Key features:
 ### Basic Installation
 
 ```bash
-pip install -e .
+pip install .
 ```
 
 ### Development Installation
@@ -38,16 +38,14 @@ pip install -e ".[ml]"
 ## Quick Start
 
 ```python
-from glayout import MappedPDK, via_stack, fet
-
-# Create a PDK instance
-pdk = MappedPDK("sky130")
+from glayout import sky130, gf180, nmos ,pmos,via_stack
 
 # Generate a via stack
-via = via_stack(pdk, "active", "metal3")
+#met2 is the bottom layer. met3 is the top layer.
+via = via_stack(sky130, "met2", "met3", centered=True) 
 
 # Generate a transistor
-transistor = fet(pdk, "nmos", width=1.0, length=0.15, fingers=2)
+transistor = nmos(sky130, width=1.0, length=0.15, fingers=2)
 
 # Write to GDS
 via.write_gds("via.gds")

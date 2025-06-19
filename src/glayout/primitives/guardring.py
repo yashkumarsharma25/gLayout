@@ -1,136 +1,132 @@
-"""
-Guard ring primitives for Glayout.
-"""
-
-from typing import Optional, Union, Tuple
-from pathlib import Path
-
+from glayout.pdk.mappedpdk import MappedPDK
 from gdsfactory.cell import cell
 from gdsfactory.component import Component
-from gdsfactory.typings import Layer
-from pydantic import validate_arguments
+from gdsfactory.components.rectangle import rectangle
+from gdsfactory.components.rectangular_ring import rectangular_ring
+from glayout.primitives.via_gen import via_array, via_stack
+from typing import Optional
+from glayout.util.comp_utils import to_decimal, to_float, evaluate_bbox
+from glayout.util.port_utils import print_ports
+from glayout.util.snap_to_grid import component_snap_to_grid
+from glayout.routing.L_route import L_route
 
-from ..pdk.mappedpdk import MappedPDK
-from ..util.geometry import (
-    rectangle,
-    evaluate_bbox,
-    component_snap_to_grid,
-    rename_ports_by_orientation,
-    prec_ref_center,
-    prec_array,
-    to_decimal,
-    to_float,
-    move,
-    movex,
-    movey,
-    align_comp_to_port,
-    rename_ports_by_list
-)
-from ..util.routing import straight_route, L_route, c_route
-from .via_gen import via_stack, via_array
 
-@cell
+#@cell
 def tapring(
     pdk: MappedPDK,
-    enclosed_rectangle: tuple[float, float],
-    sdlayer: str,
+    enclosed_rectangle=(2.0, 4.0),
+    sdlayer: str = "p+s/d",
     horizontal_glayer: str = "met2",
     vertical_glayer: str = "met1",
-    rmult: Optional[int] = None,
-    sd_rmult: int = 1,
-    gate_rmult: int = 1,
-    interfinger_rmult: int = 1,
-    sd_route_extension: float = 0,
-    gate_route_extension: float = 0,
-    dummy_routes: bool = True
+    sides: tuple[bool,bool,bool,bool] = (True,True,True,True)
 ) -> Component:
-    """Create a guard ring for well ties.
-    
-    Args:
-        pdk: MappedPDK instance
-        enclosed_rectangle: Size of rectangle to enclose (width, height)
-        sdlayer: Source/drain layer (p+s/d for PMOS, n+s/d for NMOS)
-        horizontal_glayer: Metal layer for horizontal routing
-        vertical_glayer: Metal layer for vertical routing
-        rmult: Routing multiplier (overrides other multipliers)
-        sd_rmult: Source/drain routing multiplier
-        gate_rmult: Gate routing multiplier
-        interfinger_rmult: Inter-finger routing multiplier
-        sd_route_extension: Source/drain route extension
-        gate_route_extension: Gate route extension
-        dummy_routes: Whether to route dummy transistors
-    
-    Returns:
-        Component: Guard ring component
+    """ptapring produce a p substrate / pwell tap rectanglular ring
+    This ring will legally enclose a rectangular shape
+    args:
+    pdk: MappedPDK is the pdk to use
+    enclosed_rectangle: tuple is the (width, hieght) of the area to enclose
+    ****NOTE: the enclosed_rectangle will be the enclosed dimensions of active_tap
+    horizontal_glayer: string=met2, layer used over the ring horizontally
+    vertical_glayer: string=met1, layer used over the ring vertically
+    sides: instead of creating the ring on all sides, only create it on the specified sides (W,N,E,S)
+    ports:
+    Narr_... all ports in top via array
+    Sarr_... all ports in bottom via array
+    Earr_... all ports in right via array
+    Warr_... all ports in left via array
+    bl_corner_...all ports in bottom left L route
     """
-    # Error checking
-    if "+s/d" not in sdlayer:
-        raise ValueError("specify + doped region for tapring")
+    enclosed_rectangle = pdk.snap_to_2xgrid(enclosed_rectangle,return_type="float")
+    # check layers, activate pdk, create top cell
+    pdk.has_required_glayers(
+        [sdlayer, "active_tap", "mcon", horizontal_glayer, vertical_glayer]
+    )
+    pdk.activate()
+    ptapring = Component()
     if not "met" in horizontal_glayer or not "met" in vertical_glayer:
-        raise ValueError("glayer specified must be metal layer")
-    if rmult:
-        if rmult<1:
-            raise ValueError("rmult must be positive int")
-        sd_rmult = rmult
-        gate_rmult = 1
-        interfinger_rmult = ((rmult-1) or 1)
-    if sd_rmult<1 or interfinger_rmult<1 or gate_rmult<1:
-        raise ValueError("routing multipliers must be positive int")
-    
-    # Create guard ring
-    guardring = Component()
-    
-    # Calculate dimensions
-    width, height = enclosed_rectangle
-    width = pdk.snap_to_2xgrid(width)
-    height = pdk.snap_to_2xgrid(height)
-    
-    # Create active region
-    active = guardring << rectangle(
-        size=(width, height),
+        raise ValueError("both horizontal and vertical glayers should be metals")
+    # check that ring is not too small
+    min_gap_tap = pdk.get_grule("active_tap")["min_separation"]
+    if enclosed_rectangle[0] < min_gap_tap:
+        raise ValueError("ptapring must be larger than " + str(min_gap_tap))
+    # create active tap
+    tap_width = max(
+        pdk.get_grule("active_tap")["min_width"],
+        2 * pdk.get_grule("active_tap", "mcon")["min_enclosure"]
+        + pdk.get_grule("mcon")["width"],
+    )
+    ptapring << rectangular_ring(
+        enclosed_size=enclosed_rectangle,
+        width=tap_width,
+        centered=True,
         layer=pdk.get_glayer("active_tap"),
-        centered=True
     )
-    
-    # Create doped region
-    sd_diff_ovhg = pdk.get_grule(sdlayer, "active_tap")["min_enclosure"]
-    sdlayer_dims = [dim + 2*sd_diff_ovhg for dim in (width, height)]
-    sdlayer_ref = guardring << rectangle(
-        size=sdlayer_dims,
+    # create p plus area
+    pp_enclosure = pdk.get_grule("active_tap", sdlayer)["min_enclosure"]
+    pp_width = 2 * pp_enclosure + tap_width
+    pp_enclosed_rectangle = [dim - 2 * pp_enclosure for dim in enclosed_rectangle]
+    ptapring << rectangular_ring(
+        enclosed_size=pp_enclosed_rectangle,
+        width=pp_width,
+        centered=True,
         layer=pdk.get_glayer(sdlayer),
-        centered=True
     )
-    
-    # Create via array for horizontal routing
-    hvia = via_array(
+    # create via arrs
+    via_width_horizontal = evaluate_bbox(via_stack(pdk, "active_tap", horizontal_glayer))[0]
+    arr_size_horizontal = enclosed_rectangle[0]
+    horizontal_arr = via_array(
         pdk,
         "active_tap",
         horizontal_glayer,
-        size=(width, None),
-        num_vias=(None, sd_rmult),
-        no_exception=True,
-        fullbottom=True
+        (arr_size_horizontal, via_width_horizontal),
+        minus1=True,
+        lay_every_layer=True
     )
-    hvia_ref = guardring << hvia
-    hvia_ref.movey(height/2)
-    
-    # Create via array for vertical routing
-    vvia = via_array(
+    via_width_vertical = evaluate_bbox(via_stack(pdk, "active_tap", vertical_glayer))[1]
+    arr_size_vertical = enclosed_rectangle[1]
+    vertical_arr = via_array(
         pdk,
         "active_tap",
         vertical_glayer,
-        size=(None, height),
-        num_vias=(sd_rmult, None),
-        no_exception=True,
-        fullbottom=True
+        (via_width_vertical, arr_size_vertical),
+        minus1=True,
+        lay_every_layer=True
     )
-    vvia_ref = guardring << vvia
-    vvia_ref.movex(width/2)
-    
-    # Add ports
-    guardring.add_ports(hvia_ref.get_ports_list(), prefix="top_")
-    guardring.add_ports(hvia_ref.get_ports_list(), prefix="bottom_")
-    guardring.add_ports(vvia_ref.get_ports_list(), prefix="left_")
-    guardring.add_ports(vvia_ref.get_ports_list(), prefix="right_")
-    
-    return component_snap_to_grid(rename_ports_by_orientation(guardring)) 
+    # add via arrs
+    refs_prefixes = list()
+    if sides[1]:
+        metal_ref_n = ptapring << horizontal_arr
+        metal_ref_n.movey(round(0.5 * (enclosed_rectangle[1] + tap_width),4))
+        refs_prefixes.append((metal_ref_n,"N_"))
+    if sides[2]:
+        metal_ref_e = ptapring << vertical_arr
+        metal_ref_e.movex(round(0.5 * (enclosed_rectangle[0] + tap_width),4))
+        refs_prefixes.append((metal_ref_e,"E_"))
+    if sides[3]:
+        metal_ref_s = ptapring << horizontal_arr
+        metal_ref_s.movey(round(-0.5 * (enclosed_rectangle[1] + tap_width),4))
+        refs_prefixes.append((metal_ref_s,"S_"))
+    if sides[0]:
+        metal_ref_w = ptapring << vertical_arr
+        metal_ref_w.movex(round(-0.5 * (enclosed_rectangle[0] + tap_width),4))
+        refs_prefixes.append((metal_ref_w,"W_"))
+    # connect vertices
+    if sides[1] and sides[0]:
+        tlvia = ptapring << L_route(pdk, metal_ref_n.ports["top_met_W"], metal_ref_w.ports["top_met_N"])
+        refs_prefixes += [(tlvia,"tl_")]
+    if sides[1] and sides[2]:
+        trvia = ptapring << L_route(pdk, metal_ref_n.ports["top_met_E"], metal_ref_e.ports["top_met_N"])
+        refs_prefixes += [(trvia,"tr_")]
+    if sides[3] and sides[0]:
+        blvia = ptapring << L_route(pdk, metal_ref_s.ports["top_met_W"], metal_ref_w.ports["top_met_S"])
+        refs_prefixes += [(blvia,"bl_")]
+    if sides[3] and sides[2]:
+        brvia = ptapring << L_route(pdk, metal_ref_s.ports["top_met_E"], metal_ref_e.ports["top_met_S"])
+        refs_prefixes += [(brvia,"br_")]
+    # add ports, flatten and return
+    for ref_, prefix in refs_prefixes:
+        ptapring.add_ports(ref_.get_ports_list(),prefix=prefix)
+    return component_snap_to_grid(ptapring)
+
+
+

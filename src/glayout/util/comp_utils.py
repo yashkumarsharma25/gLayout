@@ -7,7 +7,7 @@ from typing import Callable, Union, Optional, Iterable
 from decimal import Decimal
 from gdsfactory.functions import transformed
 from gdsfactory.functions import move as __gf_move
-from ..pdk.mappedpdk import MappedPDK
+from glayout.pdk.mappedpdk import MappedPDK
 from gdstk import rectangle as primitive_rectangle
 from .port_utils import add_ports_perimeter, rename_ports_by_list, parse_direction
 
