@@ -1,5 +1,7 @@
 from glayout.primitives.fet import nmos
-from glayout.pdk import sky130_mapped as sky130
+from glayout.pdk.sky130_mapped import sky130_mapped_pdk as sky130
+from glayout.pdk.gf180_mapped import gf180_mapped_pdk as gf180
+
 import sys
 import os
 import subprocess
