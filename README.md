@@ -106,4 +106,3 @@ If you use Glayout in your research, please cite our papers:
 
 For questions and support, please contact:
 - Email: mehdi_saligane@brown.edu
-- GitHub Issues: [Create an issue](https://github.com/your-username/glayout/issues) 
