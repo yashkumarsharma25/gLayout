@@ -7,7 +7,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="glayout",
-    version="0.1.0",
+    version="0.1.7",
     description="A PDK-agnostic layout automation framework for analog circuit design",
     long_description=long_description,
     long_description_content_type="text/markdown", 
