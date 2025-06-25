@@ -15,6 +15,8 @@ setup(
     author_email="mehdi@umich.edu",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
+    include_package_data=True,
+    package_data={"glayout": ["*.spice","*.lydrc"]},
     install_requires=[
         "gdsfactory>6.0.0,<=7.7.0",
         "numpy>1.21.0,<=1.24.0",
