@@ -7,7 +7,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="glayout",
-    version="0.1.4",
+    version="0.1.0",
     description="A PDK-agnostic layout automation framework for analog circuit design",
     long_description=long_description,
     long_description_content_type="text/markdown", 
@@ -25,6 +25,8 @@ setup(
         "prettyprinttree",
         "gdstk",
         "svgutils",
+        "nltk",
+        "ipywidgets",
     ],
     extras_require={
         "dev": [
