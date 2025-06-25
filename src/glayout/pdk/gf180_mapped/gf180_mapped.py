@@ -80,7 +80,7 @@ gf180_glayer_mapping = {
 
 # note for DRC, there is mim_option 'A'. This is the one configured for use
 
-gf180_lydrc_file_path = Path(__file__).resolve().parent / "gf180mcu_drc.lydrc"
+gf180_lydrc_file_path = Path(__file__).resolve().parent "gf180mcu_drc.lydrc"
 # openfasoc_dir = Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent
 # pdk_root = Path('/usr/bin/miniconda3/share/pdk/')
 pdk_root = Path(os.getenv('PDK_ROOT'))
