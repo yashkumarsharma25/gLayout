@@ -74,6 +74,10 @@ For detailed documentation, please visit our [documentation site](https://glayou
 - Support for standard components
 - Custom component definitions
 
+## Open Source PDK Flavours
+- SKY130A
+- GF180mcuD
+
 ## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
