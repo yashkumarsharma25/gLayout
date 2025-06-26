@@ -7,7 +7,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="glayout",
-    version="0.1.0",
+    version="0.1.1",
     description="A PDK-agnostic layout automation framework for analog circuit design",
     long_description=long_description,
     long_description_content_type="text/markdown", 
@@ -15,6 +15,7 @@ setup(
     author_email="mehdi@umich.edu",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
+    include_package_data=True,
     install_requires=[
         "gdsfactory>6.0.0,<=7.7.0",
         "numpy>1.21.0,<=1.24.0",
