@@ -74,7 +74,7 @@ For detailed documentation, please visit our [documentation site](https://glayou
 - Support for standard components
 - Custom component definitions
 
-### Supported Open Source PDK Flavours
+### Supported Open Source PDKs
 - SkyWater [SKY-130A](https://skywater-pdk.readthedocs.io/en/main/)
 - GlobalFoundries [GF-180mcuD](https://gf180mcu-pdk.readthedocs.io/en/latest/)
 
