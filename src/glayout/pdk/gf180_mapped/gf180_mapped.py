@@ -81,13 +81,12 @@ gf180_glayer_mapping = {
 # note for DRC, there is mim_option 'A'. This is the one configured for use
 
 gf180_lydrc_file_path = Path(__file__).resolve().parent / "gf180mcu_drc.lydrc"
-
 # openfasoc_dir = Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent
 # pdk_root = Path('/usr/bin/miniconda3/share/pdk/')
 pdk_root = Path(os.getenv('PDK_ROOT'))
 lvs_schematic_ref_file = Path(__file__).resolve().parent / "gf180mcu_osu_sc_9T.spice"
-magic_drc_file = pdk_root / "gf180mcuC" / "libs.tech" / "magic" / "gf180mcuC.magicrc"
-lvs_setup_tcl_file = pdk_root / "gf180mcuC" / "libs.tech" / "netgen" / "gf180mcuC_setup.tcl"
+magic_drc_file = pdk_root / "gf180mcuD" / "libs.tech" / "magic" / "gf180mcuD.magicrc"
+lvs_setup_tcl_file = pdk_root / "gf180mcuD" / "libs.tech" / "netgen" / "gf180mcuD_setup.tcl"
 temp_dir = None
 
 
