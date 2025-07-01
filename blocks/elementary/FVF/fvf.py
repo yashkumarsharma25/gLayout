@@ -4,10 +4,7 @@ from glayout import nmos, pmos, tapring,via_stack
 from glayout.spice.netlist import Netlist
 from glayout.routing import c_route,L_route,straight_route
 
-
-from gdsfactory.cell import cell
 from gdsfactory.component import Component
-from gdsfactory import Component
 
 from glayout.util.comp_utils import evaluate_bbox, prec_center, prec_ref_center, align_comp_to_port
 from glayout.util.snap_to_grid import component_snap_to_grid
@@ -60,7 +57,6 @@ def add_fvf_labels(fvf_in: Component,
         fvf_in.add(compref)
     return fvf_in.flatten() 
 
-@cell
 def  flipped_voltage_follower(
         pdk: MappedPDK,
         device: str = 'nfet',
