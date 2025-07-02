@@ -1,6 +1,8 @@
 """
 utils functions
-"""
+
+removing initial imports to avoid circular imports
+everythong is imported in top the __init__.py file
 
 from .comp_utils import evaluate_bbox, center_to_edge_distance, move, movex, movey, to_float, to_decimal, prec_array, prec_center, prec_ref_center, get_padding_points_cc, get_primitive_rectangle
 from .port_utils import PortTree, parse_direction, proc_angle, ports_inline, ports_parallel, rename_component_ports, rename_ports_by_list, rename_ports_by_orientation, remove_ports_with_prefix, add_ports_perimeter, get_orientation, assert_port_manhattan, assert_ports_perpindicular, set_port_orientation, set_port_width, print_ports, create_private_ports, print_port_tree_all_cells
@@ -10,7 +12,7 @@ from .component_array_create import get_files_with_extension, write_component_ma
 from .print_rules import split_rule, create_ruledeck_python_dictionary_definition, visualize_ruleset
 
 
-"""
+
 Duplicate functions ignored:
 
 | Source File              | Function Name                    | Currently in __init__.py |
