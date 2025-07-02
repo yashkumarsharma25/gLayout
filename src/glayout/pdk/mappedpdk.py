@@ -564,7 +564,7 @@ custom_drc_save_report $::env(DESIGN_NAME) $::env(REPORTS_DIR)/$::env(DESIGN_NAM
         netlist: Optional[PathType] = None,
         output_file_path: Optional[PathType] = None, 
         copy_intermediate_files: Optional[bool] = False,
-        show_stricpts: Optional[bool] = False,
+        show_scripts: Optional[bool] = False,
     ) -> dict:
         """ Runs LVS using netgen on the either the component or the gds file path provided. Requires the design name and the pdk_root to be specified, handles importing the required magicrc and other setup files, if not specified. Accepts overriden lvs_setup_tcl_file, lvs_schematic_ref_file, and magic_drc_file.
 
@@ -780,7 +780,7 @@ ext2spice rthresh 0
 ext2spice -o {str(pex_path)}
 exit
 """
-            if show_stricpts:
+            if show_scripts:
                 print("Creating magic script for LVS...")
                 # Print the magic script content to the terminal instead of writing to a file
                 magic_script_content = magic_script_content.strip()
@@ -809,7 +809,7 @@ exit
                 magic_subproc_out = magic_subproc.stdout.decode('utf-8')
                 print(magic_subproc_out)
                 
-                if show_stricpts:
+                if show_scripts:
                     with open(lvsmag_path, 'r') as f:
                         content = f.read()
                         print("==== LVS MAG BEGIN ====")
