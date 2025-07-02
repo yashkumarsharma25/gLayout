@@ -1,7 +1,7 @@
 """
 usage: from mappedpdk import MappedPDK
 """
-
+import re
 from gdsfactory.pdk import Pdk
 from gdsfactory.typings import Component, PathType, Layer
 from pydantic import validator, StrictStr, ValidationError
@@ -33,7 +33,7 @@ class SetupPDKFiles:
         self.pdk = pdk
         self.temp_dir = temp_dir
         
-        if pdk_root is None: 
+        if pdk_root is None:
             # condition for pdk_root not being provided
             if klayout_drc_file is None: 
                 raise ValueError("Please provide a Klayout DRC file if not providing PDK root!")
@@ -42,6 +42,8 @@ class SetupPDKFiles:
                     raise ValueError("The file must be provided as a Path object or string")
                 else:
                     self.klayout_drc_file = klayout_drc_file
+            
+            
             if magic_drc_file is None:
                 raise ValueError("Please provide a magic DRC file")
             else:
@@ -49,6 +51,7 @@ class SetupPDKFiles:
                     raise ValueError("The files must be provided as Path objects or strings")
                 else:
                     self.magic_drc_file = magic_drc_file
+            
             if lvs_schematic_ref_file is None or lvs_setup_tcl_file is None or magic_drc_file is None:
                 raise ValueError(f"""Please provide the following files:
                       - a spice file with subckt references(lvs_schematic_ref_file)
@@ -67,18 +70,21 @@ class SetupPDKFiles:
                 raise ValueError("pdk_root must be a Path object or string")
             # condition for pdk_root being provided
             self.pdk_root = pdk_root
+            
             if klayout_drc_file is None:
                 # condition for klayout_drc_file not being provided with pdk_root provided
                 if pdk == 'sky130':
                     klayout_drc_file = Path(pdk_root) / "sky130A" / "libs.tech" / "klayout" / "drc" / "sky130.lydrc"
                 elif pdk == 'gf180':
                     raise NotImplementedError("Klayout lvs is not supported for gf180 PDK")
+                    ## It is supplied along with glayout package (at /pdk/gf180_mapped/), so we can use it from gLayout repo-root
                 else:
                     raise ValueError("pdk must be either 'sky130' or 'gf180', others not supported!")
             
                 
             if lvs_schematic_ref_file is None:
                 if pdk == 'gf180':
+                    ## It is supplied along with glayout package (at /pdk/gf180_mapped/), so we can use it from gLayout base
                     raise NotImplementedError("LVS is not supported for gf180 PDK")
                 
                 lvs_spice_file = Path(pdk_root) / "sky130A" / "libs.ref" / "sky130_fd_sc_hd" / "spice" / "sky130_fd_sc_hd.spice"
@@ -88,6 +94,7 @@ class SetupPDKFiles:
             if lvs_setup_tcl_file is None:
                 if pdk == 'gf180':
                     raise NotImplementedError("LVS is not supported for gf180 PDK")
+                    ## It is supplied along with glayout package (at /pdk/gf180_mapped/), so we can use it from gLayout base
                 dest_lvs_setup_tcl = temp_dir / "sky130A_setup.tcl"
                 lvs_setup_tcl_file = self.magic_netgen_file_exists(dest_lvs_setup_tcl, pdk_root)
                 
@@ -178,7 +185,7 @@ X8    t4    A    VGND    VGND  sky130_fd_pr__nfet_01v8 m=1 mult=1 w=180000u l=15
                 if self.pdk == 'sky130':
                     return f"{self.pdk}A"
                 elif self.pdk == 'gf180':
-                    return f"{self.pdk}mcuC"
+                    return f"{self.pdk}mcuD"
             
             # Check if the magic_file exists, if not, copy it to the required pdk directory
             if magic_file != None and not magic_file.is_file():
@@ -556,7 +563,8 @@ custom_drc_save_report $::env(DESIGN_NAME) $::env(REPORTS_DIR)/$::env(DESIGN_NAM
         magic_drc_file: Optional[PathType] = None, 
         netlist: Optional[PathType] = None,
         output_file_path: Optional[PathType] = None, 
-        copy_intermediate_files: Optional[bool] = False
+        copy_intermediate_files: Optional[bool] = False,
+        show_stricpts: Optional[bool] = False,
     ) -> dict:
         """ Runs LVS using netgen on the either the component or the gds file path provided. Requires the design name and the pdk_root to be specified, handles importing the required magicrc and other setup files, if not specified. Accepts overriden lvs_setup_tcl_file, lvs_schematic_ref_file, and magic_drc_file.
 
@@ -606,6 +614,7 @@ custom_drc_save_report $::env(DESIGN_NAME) $::env(REPORTS_DIR)/$::env(DESIGN_NAM
         """
         # if not self.name == 'sky130':
         #     raise NotImplementedError("LVS only supported for sky130 PDK")
+        
         def check_if_path_or_net_string(netlist: PathType):
             cdl_suffix = ".cdl"
             spice_suffix = ".spice"
@@ -650,17 +659,39 @@ custom_drc_save_report $::env(DESIGN_NAME) $::env(REPORTS_DIR)/$::env(DESIGN_NAM
             else:
                 print("Warning: Design name not found in the netlist file")
         
+        # Function to add 'u' (micron unit label) to w= and l= values in the netlist
+        # Hacky way to get it working with GF180 PDK and Netgen
+        def add_u_to_wl(line):
+            # Only add 'u' if the value is not already followed by a unit
+            line = re.sub(r'(w=)([0-9.]+)(\s|$)', r'\1\2u\3', line)
+            line = re.sub(r'(l=)([0-9.]+)(\s|$)', r'\1\2u\3', line)
+            return line
+
         def write_spice(input_cdl, output_spice, lvs_schematic_ref_file):
         # create {design_name}.spice
-            with open(input_cdl, 'r') as file:
-                lines = file.readlines()
-                with open(output_spice, 'w') as file2:
-                    sky130_spice_path = Path(lvs_schematic_ref_file).resolve()
-                    file2.write(f".include {sky130_spice_path}\n")
-                    # write the rest of the lines
-                    for line in lines:
-                        file2.write(line)
-        
+            if self.name == 'sky130':
+                with open(input_cdl, 'r') as file:
+                    lines = file.readlines()
+                    with open(output_spice, 'w') as file2:
+                        sky130_spice_path = Path(lvs_schematic_ref_file).resolve()
+                        file2.write(f".include {sky130_spice_path}\n")
+                        # write the rest of the lines
+                        for line in lines:
+                            file2.write(line)
+                
+            elif self.name.lower() == 'gf180':
+                # For GF180 PDK, we need to add 'u' to w= and l= values in the netlist
+                with open(input_cdl, 'r') as file:
+                    lines = file.readlines()
+                    with open(output_spice, 'w') as file2:
+                        sky130_spice_path = Path(lvs_schematic_ref_file).resolve()
+                        file2.write(f".include {sky130_spice_path}\n")
+                        # write the rest of the lines
+                        for line in lines:
+                            file2.write(add_u_to_wl(line))
+            else:
+                raise NotImplementedError("LVS only supported for gf180 and sky130 PDKs")
+            
         if not check_command_exists("netgen"):
             raise RuntimeError("Netgen not found in the system")
         if not check_command_exists("magic"):
@@ -682,16 +713,8 @@ custom_drc_save_report $::env(DESIGN_NAME) $::env(REPORTS_DIR)/$::env(DESIGN_NAM
             report_path = temp_dir_path / f"{design_name}_lvs.rpt"
             
             if isinstance(layout, Component):
-                #layout.write_gds(str(gds_path))
-                #GF180 PDKs require unit and precision to be specified
-                if self.name == 'sky130':
-                    print("Using sky130 PDK, writing GDS without unit and precision")
-                    layout.write_gds(str(gds_path))
-                elif self.name == 'gf180':
-                    print("Using gf180 PDK, writing GDS with unit and precision")
-                    layout.write_gds(str(gds_path), unit=1e-6, precision=1e-9)
-                else:
-                    raise NotImplementedError("LVS only supported for sky130 or gf180 PDKs")
+                
+                layout.write_gds(str(gds_path))
                 
                 if netlist is None:
                     netlist = layout.info['netlist'].generate_netlist()
@@ -715,30 +738,58 @@ custom_drc_save_report $::env(DESIGN_NAME) $::env(REPORTS_DIR)/$::env(DESIGN_NAM
                         with open(str(netlist_from_comp), 'w') as f:
                             f.write(netlist)
                     
-            modify_design_name_in_cdl(str(netlist_from_comp), design_name)
-            
+            modify_design_name_in_cdl(str(netlist_from_comp), design_name)    
             lvsschemref_file = self.pdk_files['lvs_schematic_ref_file'] if lvs_schematic_ref_file is None else lvs_schematic_ref_file
         
-            
             write_spice(str(netlist_from_comp), str(spice_path), lvsschemref_file)
             
             magic_script_content = f"""
+drc off            
 gds flatglob *\\$\\$*
 gds read {gds_path}
-load {design_name}
 
-select top cell
-ext2resist all
-extract all
-ext2spice lvs
-ext2spice extresist on 
-ext2spice -o {str(lvsmag_path)}
+# LVS Netlist
 load {design_name}
+select top cell
+
+extract all
+ext2resist all
+
+ext2spice lvs
+ext2spice extresist on
+ext2spice -o {str(lvsmag_path)}
+
+# Sim Netlist
+load {design_name}
+extract all
 ext2sim cthresh 0
 ext2sim -o {str(sim_path)}
+
+# Pex Netlist
+load {design_name}
+select top cell
+
+extract all
+ext2resist all
+
+
+ext2spice pex
+ext2spice extresist on
+ext2spice cthresh 0
+ext2spice rthresh 0
+ext2spice -o {str(pex_path)}
 exit
 """
-
+            if show_stricpts:
+                print("Creating magic script for LVS...")
+                # Print the magic script content to the terminal instead of writing to a file
+                magic_script_content = magic_script_content.strip()
+                if not magic_script_content:
+                    raise ValueError("Magic script content is empty! Please provide a valid magic script content.")
+                print("==== MAGIC SCRIPT BEGIN ====")
+                print(magic_script_content)
+                print("==== MAGIC SCRIPT END ====")
+            
             with tempfile.NamedTemporaryFile(mode='w', delete=False) as magic_script_file:
                 magic_script_file.write(magic_script_content)
                 magic_script_path = magic_script_file.name
@@ -758,9 +809,22 @@ exit
                 magic_subproc_out = magic_subproc.stdout.decode('utf-8')
                 print(magic_subproc_out)
                 
+                if show_stricpts:
+                    with open(lvsmag_path, 'r') as f:
+                        content = f.read()
+                        print("==== LVS MAG BEGIN ====")
+                        print(content)
+                        print("==== LVS MAG END ====")
+
+                    with open(spice_path, 'r') as f:
+                        content = f.read()
+                        print("==== SPICE MAG BEGIN ====")
+                        print(content)
+                        print("==== SPICE MAG END ====")
+                    
                 lvssetup_file = self.pdk_files['lvs_setup_tcl_file'] if lvs_setup_tcl_file is None else lvs_setup_tcl_file 
                 netgen_command = f'netgen -batch lvs "{str(lvsmag_path)} {design_name}" "{str(spice_path)} {design_name}" {lvssetup_file} {str(report_path)}'
-                
+                print(f"Running netgen command: {netgen_command.strip()}")
                 netgen_subproc = subprocess.run(
                     netgen_command,
                     shell=True,
@@ -798,10 +862,12 @@ exit
                     if file.endswith(".ext"):
                         os.remove(file)
                 # copy the report from the temp directory to the specified location
+                
                 if output_file_path is not None:
                     dir_name = design_name
                     #path_to_dir = Path(__file__).resolve().parents[1]  / "regression" / "lvs" / dir_name
                     path_to_dir = Path(output_file_path) / "lvs" / dir_name
+                    
                     if not path_to_dir.exists():
                         path_to_dir.mkdir(parents=True, exist_ok=False)
                     #new_output_file_path = path_to_dir / output_file_path
@@ -816,12 +882,14 @@ exit
                     if copy_intermediate_files:
                         lvsmag_dest = path_to_dir / f"{design_name}_lvsmag.spice"
                         sim_dest    = path_to_dir / f"{design_name}_sim.spice"
+                        pex_dest    = path_to_dir / f"{design_name}_pex.spice"
                         shutil.copy(lvsmag_path, lvsmag_dest)
                         shutil.copy(sim_path, sim_dest)
-        
+                        shutil.copy(pex_path, pex_dest)
+                        print(f"Copied intermediate files to {path_to_dir}")
                         # shutil.copy(lvsmag_path, str(Path.cwd() / f"{design_name}_lvsmag.spice"))  
                         # shutil.copy(sim_path, str(Path.cwd() / f"{design_name}_sim.spice"))
-                    
+            
         return {'magic_subproc_code': magic_subproc_code, 'netgen_subproc_code': netgen_subproc_code, 'result_str': result_str}
                     
     
