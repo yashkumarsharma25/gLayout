@@ -197,8 +197,8 @@ def multiplier(
         for finger in range(fingers+1):
             diff_top_port = movey(sd_N_port,destination=width/2)
             # place sdvia such that metal does not overlap diffusion
-            big_extension = sdroute_minsep + sdmet_hieght/2 + sdmet_hieght
-            sdvia_extension = big_extension if finger % 2 else sdmet_hieght/2
+            big_extension = sdroute_minsep + sdroute_minsep + sdmet_hieght/2 + sdmet_hieght
+            sdvia_extension = big_extension if finger % 2 else sdroute_minsep + (sdmet_hieght)/2
             sdvia_ref = align_comp_to_port(sdvia,diff_top_port,alignment=('c','t'))
             multiplier.add(sdvia_ref.movey(sdvia_extension + pdk.snap_to_2xgrid(sd_route_extension)))
             multiplier << straight_route(pdk, diff_top_port, sdvia_ref.ports["bottom_met_N"])
