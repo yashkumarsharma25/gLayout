@@ -214,20 +214,20 @@ def current_mirror(
     return top_level
 
 if __name__ == "__main__":
-    comp = current_mirror(gf180)
+    comp = current_mirror(sky130)
     # comp.pprint_ports()
-    comp = add_cm_labels(comp,gf180)
+    comp = add_cm_labels(comp,sky130)
     comp.name = "CM"
     comp.show()
     #print(comp.info['netlist'].generate_netlist())
     print("...Running DRC...")
-    drc_result = gf180.drc_magic(comp, "CM")
+    drc_result = sky130.drc_magic(comp, "CM")
     ## Klayout DRC
     #drc_result = sky130.drc(comp)\n
     
     time.sleep(5)
         
     print("...Running LVS...")
-    lvs_res=gf180.lvs_netgen(comp, "CM",show_scripts=True)
+    lvs_res=sky130.lvs_netgen(comp, "CM")
     #print("...Saving GDS...")
     #comp.write_gds('out_CMirror.gds')
