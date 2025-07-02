@@ -319,6 +319,7 @@ class MappedPDK(Pdk):
             if output_dir_or_file
             else Path.cwd().resolve()
         )
+
         if report_path.is_dir():
             report_path = Path(
                 report_path
@@ -469,7 +470,7 @@ custom_drc_save_report $::env(DESIGN_NAME) $::env(REPORTS_DIR)/$::env(DESIGN_NAM
             self.pdk_files['temp_dir'] = temp_dir_path
             
             if pdk_root is None:
-                print("using default pdk_root: /usr/bin/miniconda3/share/pdk/")
+                print("using default pdk_root")
             else: 
                 print('using provided pdk_root')
                 self.pdk_files['pdk_root'] = pdk_root
@@ -528,18 +529,19 @@ custom_drc_save_report $::env(DESIGN_NAME) $::env(REPORTS_DIR)/$::env(DESIGN_NAM
             ret_dict = {"result_str": result_str, "subproc_code": subproc_code}
             if ret_dict is None:
                 raise ValueError('Something weird happened')
-            
+                    
             if output_file is not None:
-                path_to_regression_drc = Path(__file__).resolve().parents[1] / "regression" / "drc"
                 dir_name = design_name
-                path_to_dir = path_to_regression_drc / dir_name
+                path_to_dir = Path(output_file) / "drc" / dir_name
                 if not path_to_dir.exists():
                     path_to_dir.mkdir(parents=True, exist_ok=False)
-                new_output_file_path = path_to_dir / output_file
-                if not new_output_file_path.exists():
-                    shutil.copy(report_path, path_to_dir / output_file)
-                else: 
-                    raise ValueError("Output file already exists")
+                new_output_file_path = path_to_dir / Path(report_path).name
+                # Overwrite the report file if it exists
+                shutil.copy(report_path, new_output_file_path)
+                # if not new_output_file_path.exists():
+                #     shutil.copy(report_path, path_to_dir / output_file)
+                # else: 
+                #     raise ValueError("Output file already exists")
 
         return ret_dict
 
@@ -602,8 +604,8 @@ custom_drc_save_report $::env(DESIGN_NAME) $::env(REPORTS_DIR)/$::env(DESIGN_NAM
         Returns:
             dict: a dictionary containing the result string and the subprocess code
         """
-        if not self.name == 'sky130':
-            raise NotImplementedError("LVS only supported for sky130 PDK")
+        # if not self.name == 'sky130':
+        #     raise NotImplementedError("LVS only supported for sky130 PDK")
         def check_if_path_or_net_string(netlist: PathType):
             cdl_suffix = ".cdl"
             spice_suffix = ".spice"
@@ -680,7 +682,17 @@ custom_drc_save_report $::env(DESIGN_NAME) $::env(REPORTS_DIR)/$::env(DESIGN_NAM
             report_path = temp_dir_path / f"{design_name}_lvs.rpt"
             
             if isinstance(layout, Component):
-                layout.write_gds(str(gds_path))
+                #layout.write_gds(str(gds_path))
+                #GF180 PDKs require unit and precision to be specified
+                if self.name == 'sky130':
+                    print("Using sky130 PDK, writing GDS without unit and precision")
+                    layout.write_gds(str(gds_path))
+                elif self.name == 'gf180':
+                    print("Using gf180 PDK, writing GDS with unit and precision")
+                    layout.write_gds(str(gds_path), unit=1e-6, precision=1e-9)
+                else:
+                    raise NotImplementedError("LVS only supported for sky130 or gf180 PDKs")
+                
                 if netlist is None:
                     netlist = layout.info['netlist'].generate_netlist()
                     with open(str(netlist_from_comp), 'w') as f:
@@ -691,6 +703,7 @@ custom_drc_save_report $::env(DESIGN_NAME) $::env(REPORTS_DIR)/$::env(DESIGN_NAM
                     else: 
                         with open(str(netlist_from_comp), 'w') as f:
                             f.write(netlist)
+                            
             elif isinstance(layout, PathType):            
                 shutil.copy(layout, str(gds_path))
                 if netlist is None:
@@ -787,18 +800,27 @@ exit
                 # copy the report from the temp directory to the specified location
                 if output_file_path is not None:
                     dir_name = design_name
-                    path_to_dir = Path(__file__).resolve().parents[1]  / "regression" / "lvs" / dir_name
+                    #path_to_dir = Path(__file__).resolve().parents[1]  / "regression" / "lvs" / dir_name
+                    path_to_dir = Path(output_file_path) / "lvs" / dir_name
                     if not path_to_dir.exists():
                         path_to_dir.mkdir(parents=True, exist_ok=False)
-                    new_output_file_path = path_to_dir / output_file_path
-                    if not new_output_file_path.exists():
-                        shutil.copy(report_path, path_to_dir / output_file_path)
-                    else: 
-                        raise ValueError("Output file already exists!")
+                    #new_output_file_path = path_to_dir / output_file_path
+                    new_output_file_path = path_to_dir / Path(report_path).name
+                    # Overwrite the report file if it exists
+                    shutil.copy(report_path, new_output_file_path)
+                    # if not new_output_file_path.exists():
+                    #     shutil.copy(report_path, path_to_dir / output_file_path)
+                    # else: 
+                    #     raise ValueError("Output file already exists!")
                     
-                if copy_intermediate_files:
-                    shutil.copy(lvsmag_path, str(Path.cwd() / f"{design_name}_lvsmag.spice"))  
-                    shutil.copy(sim_path, str(Path.cwd() / f"{design_name}_sim.spice"))
+                    if copy_intermediate_files:
+                        lvsmag_dest = path_to_dir / f"{design_name}_lvsmag.spice"
+                        sim_dest    = path_to_dir / f"{design_name}_sim.spice"
+                        shutil.copy(lvsmag_path, lvsmag_dest)
+                        shutil.copy(sim_path, sim_dest)
+        
+                        # shutil.copy(lvsmag_path, str(Path.cwd() / f"{design_name}_lvsmag.spice"))  
+                        # shutil.copy(sim_path, str(Path.cwd() / f"{design_name}_sim.spice"))
                     
         return {'magic_subproc_code': magic_subproc_code, 'netgen_subproc_code': netgen_subproc_code, 'result_str': result_str}
                     
