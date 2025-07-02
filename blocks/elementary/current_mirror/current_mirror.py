@@ -207,27 +207,27 @@ def current_mirror(
     
     top_level.info['netlist'] = current_mirror_netlist(
         pdk, 
-        width=kwargs.get('width', 3), length=kwargs.get('length', 0.15), multipliers=numcols, with_dummy=with_dummy,
+        width=kwargs.get('width', 3), length=kwargs.get('length'), multipliers=numcols, with_dummy=with_dummy,
         n_or_p_fet = 'nfet' if device.lower() in ['nmos', 'nfet'] else 'pfet' if device.lower() in ['pmos', 'pfet'] else (_ for _ in ()).throw(ValueError(f"Device type {device} not recognized. Use 'nfet' or 'pfet'.")),
         subckt_only=subckt_only
     )
     return top_level
 
 if __name__ == "__main__":
-    comp = current_mirror(sky130)
+    comp = current_mirror(gf180)
     # comp.pprint_ports()
-    comp = add_cm_labels(comp,sky130)
+    comp = add_cm_labels(comp,gf180)
     comp.name = "CM"
     comp.show()
     #print(comp.info['netlist'].generate_netlist())
     print("...Running DRC...")
-    drc_result = sky130.drc_magic(comp, "CM")
+    drc_result = gf180.drc_magic(comp, "CM")
     ## Klayout DRC
     #drc_result = sky130.drc(comp)\n
     
     time.sleep(5)
         
     print("...Running LVS...")
-    lvs_res=sky130.lvs_netgen(comp, "CM")
+    lvs_res=gf180.lvs_netgen(comp, "CM",show_scripts=True)
     #print("...Saving GDS...")
     #comp.write_gds('out_CMirror.gds')
