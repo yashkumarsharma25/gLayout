@@ -12,6 +12,7 @@ from .primitives.guardring import tapring
 from .primitives.mimcap import mimcap, mimcap_array
 from .primitives.resistor import resistor
 
+from .spice import Netlist
 
 from .util.port_utils import PortTree, parse_direction, proc_angle, ports_inline, ports_parallel, rename_component_ports, rename_ports_by_list, rename_ports_by_orientation, remove_ports_with_prefix, add_ports_perimeter, get_orientation, assert_port_manhattan, assert_ports_perpindicular, set_port_orientation, set_port_width, print_ports, create_private_ports, print_port_tree_all_cells
 
@@ -32,6 +33,7 @@ from .placement.two_transistor_place import two_transistor_place
 __version__ = "0.1.1"
 
 __all__ = [
+    "Netlist",
     "mimcap",
     "mimcap_array",
     "resistor",
