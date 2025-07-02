@@ -6,7 +6,7 @@ from gdsfactory import cell
 from gdsfactory.component import Component
 from gdsfactory.components import text_freetype, rectangle
 
-from glayout.routing.c_route import c_route,L_route,straight_route
+from glayout.routing import c_route,L_route,straight_route
 from glayout.spice.netlist import Netlist
 
 from glayout.util.port_utils import add_ports_perimeter,rename_ports_by_orientation
