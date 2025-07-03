@@ -766,6 +766,7 @@ ext2sim cthresh 0
 ext2sim -o {str(sim_path)}
 
 # Pex Netlist
+flatten {design_name}
 load {design_name}
 select top cell
 
