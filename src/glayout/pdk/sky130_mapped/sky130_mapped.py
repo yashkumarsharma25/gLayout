@@ -81,7 +81,7 @@ sky130_glayer_mapping = {
     "n+s/d": "nsdm",
     "p+s/d": "psdm",
     "nwell": "nwell",
-    "pwell": (64,44), # This Layer defination donot exist in the PDK manual, See Pwell label
+    "pwell": (64,44), # This Layer defination donot exist in the PDK manual, See Pwell label (See Pull https://github.com/idea-fasoc/OpenFASOC/pull/366/)
     "dnwell": "dnwell",
     # _pin layer ampping
     "met5_pin": "met4_pin",
