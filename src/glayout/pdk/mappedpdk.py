@@ -769,14 +769,17 @@ ext2sim -o {str(sim_path)}
 load {design_name}
 select top cell
 
+extract do local
 extract all
-ext2resist all
 
+ext2sim labels on
+ext2sim
+extresist tolerance 10
+extresist
 
-ext2spice pex
-ext2spice extresist on
+ext2spice lvs
 ext2spice cthresh 0
-ext2spice rthresh 0
+ext2spice extresist on
 ext2spice -o {str(pex_path)}
 exit
 """
@@ -867,7 +870,6 @@ exit
                     dir_name = design_name
                     #path_to_dir = Path(__file__).resolve().parents[1]  / "regression" / "lvs" / dir_name
                     path_to_dir = Path(output_file_path) / "lvs" / dir_name
-                    
                     if not path_to_dir.exists():
                         path_to_dir.mkdir(parents=True, exist_ok=False)
                     #new_output_file_path = path_to_dir / output_file_path
