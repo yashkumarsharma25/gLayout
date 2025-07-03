@@ -8,16 +8,14 @@ Tutorials marked with 🚧 are currently in progress—stay tuned for updates!
 ### 1. Flipped Voltage Follower (FVF)
 - [**Part 1: Placement, Routing, and DRC**](./glayout_tutorial_FVF_part1.ipynb)   
   Learn how to place components, route connections, and perform Design Rule Checks (DRC).
-- **Part 2: LVS, Extraction, and Simulations**  
-  🚧 Under Construction
-  <!-- [glayout_tutorial_FVF_part2.ipynb](./glayout_tutorial_FVF_part2.ipynb) -->
-
+- [**Part 2: LVS, Extraction, and Simulations**](./glayout_tutorial_FVF_part2.ipynb)    
+  Learn how to perform Layout vs Schematic Checks (LVS), Parasitic extraction (PEX with magic) and simulations (with ngspice).
 
 ---
 
 ### 2. Inverter
 - [**Part 1: Placement, Routing, and DRC**](./glayout_tutorial_INV_part1.ipynb)  
-- **Part 2: LVS, Extraction, and Simulations**
+- **Part 2: LVS, Extraction, and Simulations**(./glayout_tutorial_INV_part2.ipynb) 
   🚧 Under Construction
   <!-- [glayout_tutorial_INV_part2.ipynb](./glayout_tutorial_INV_part2.ipynb) -->
 
