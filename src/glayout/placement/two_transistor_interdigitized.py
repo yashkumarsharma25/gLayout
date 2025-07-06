@@ -80,18 +80,19 @@ def two_tran_interdigitized_netlist(
         length = pdk.get_grule('poly')['min_width']
     if width is None:
         width = 3 
-    mtop = multipliers if subckt_only else 1
+    #mtop = multipliers if subckt_only else 1
+    #mtop=1
     model = pdk.models[n_or_p_fet]
-    dmtop = fingers * multipliers
+    mtop = fingers * multipliers
     
-    source_netlist = """.subckt {circuit_name} {nodes} """ + f'l={length} w={width} m={mtop} ' + f"""
-XA VDD1 VG1 VSS1 VB {model} l={length} w={width} m={dmtop}
-XB VDD2 VG2 VSS2 VB {model} l={length} w={width} m={dmtop}"""
+    source_netlist = """.subckt {circuit_name} {nodes} """ + f'l={length} w={width} m={1} '+ f"""
+XA VDD1 VG1 VSS1 VB {model} l={length} w={width} m={mtop}
+XB VDD2 VG2 VSS2 VB {model} l={length} w={width} m={mtop}"""
     if with_dummy:
-        source_netlist += "\nXDUMMY VB VB VB VB {model} l={{l}} w={{w}} m={{2}}"
+        source_netlist += f"\nXDUMMY VB VB VB VB {model} l={length} w={width} m={2}"
     source_netlist += "\n.ends {circuit_name}"
 
-    instance_format = "X{name} {nodes} {circuit_name} l={length} w={width} m={mult}"
+    instance_format = "X{name} {nodes} {circuit_name} l={length} w={width} m={{1}}"
  
     return Netlist(
         circuit_name='two_trans_interdigitized',
