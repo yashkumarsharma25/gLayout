@@ -1,16 +1,6 @@
 """
 convert_training_data.py – Generic converter for prediction-files -> clean JSONL.
 
-Usage
------
-# Baseline run-3 example
-python scripts/utils/convert_training_data.py \
-       --in_dir data/dataset_for_sft/data-run-3/predictions_baseline \
-       --tag run3
-
-# Fine-tuned run-2 example (old default folders!)
-python scripts/utils/convert_training_data.py
-
 The script expects *in_dir* to have **either**:
   • sub-folders `7b` and `13b`, **or**
   • sub-folders `7b-ft` and `13b-ft`  (for finetuned predictions).
