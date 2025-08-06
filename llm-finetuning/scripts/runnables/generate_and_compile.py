@@ -1,5 +1,4 @@
-"""End-to-end pipeline: Generate code via `scripts/others/run_inference.py` then compile.
-
+"""
 Example
 -------
 $ python generate_and_compile.py \
