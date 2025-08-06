@@ -41,7 +41,6 @@ pip install -e ".[ml]"
 pip install -e ".[llm]"
 ```
 
-
 ## Quick Start
 
 ```python

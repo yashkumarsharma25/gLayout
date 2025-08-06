@@ -198,17 +198,8 @@ def main():
 
         print(f"[INFO] Found {len(files)} Python files in {code_dir}")
 
-        # # Apply file limit if specified
-        # if file_limit and total_processed >= file_limit:
-        #     print(f"[INFO] Reached file limit of {file_limit}, stopping processing")
-        #     break
 
         for code_path in files:
-            # # Check file limit
-            # if file_limit and total_processed >= file_limit:
-            #     print(f"[INFO] Reached file limit of {file_limit}, stopping processing")
-            #     break
-
             fname = code_path.name
             out_path = out_dir / (code_path.stem + ".txt")
             if out_path.exists() and not args.overwrite:
@@ -235,7 +226,6 @@ def main():
             print(f"[saved] {out_path}")
             total_processed += 1
 
-            # Calculate and display ETA
             elapsed = datetime.datetime.now() - start_time
             if total_processed > 0:
                 avg_time_per_file = elapsed.total_seconds() / total_processed
