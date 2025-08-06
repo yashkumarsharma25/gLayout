@@ -1,18 +1,3 @@
-"""inference_gemini.py – batch inference over a dataset of code + compile logs
-
-Usage example
--------------
-python inference_gemini.py \
-  --model gemini-2.0-flash \
-  --code_dir dataset_for_sft/outputs \
-  --compile_dir dataset_for_sft/compile_results \
-  --output_dir dataset_for_sft/predictions_baseline
-
-Add `--finetuned` to switch to the prompt variant for the fine-tuned model and
-specify a custom `--model` id pointing to your fine-tuned checkpoint.
-
-Environment variable GOOGLE_API_KEY must be set, or pass via --api_key.
-"""
 from __future__ import annotations
 import argparse
 import os
