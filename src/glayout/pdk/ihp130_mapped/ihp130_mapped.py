@@ -8,7 +8,7 @@ from pathlib import Path
 import os
 
 # Layer definitions for IHP 130nm BiCMOS Open Source PDK
-# See: IHP Layer Table (GDS number and datatype) ([ihp-open-pdk-docs.readthedocs.io](https://ihp-open-pdk-docs.readthedocs.io/en/latest/layout_rules/02_layer_table.html))
+# See: IHP Layer Table (GDS number and datatype) https://ihp-open-pdk-docs.readthedocs.io/en/latest/layout_rules/02_layer_table.html
 
 LAYER = {
     # Active (diffusion)
