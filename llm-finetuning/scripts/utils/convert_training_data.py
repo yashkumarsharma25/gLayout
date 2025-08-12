@@ -1,14 +1,3 @@
-"""
-convert_training_data.py – Generic converter for prediction-files -> clean JSONL.
-
-The script expects *in_dir* to have **either**:
-  • sub-folders `7b` and `13b`, **or**
-  • sub-folders `7b-ft` and `13b-ft`  (for finetuned predictions).
-
-It extracts the fenced ```json … ``` block from every `.txt` file and writes
-one JSON object per line into:
-  data/processed/train_data_{7b,13b}_{tag}_clean.jsonl
-"""
 from __future__ import annotations
 
 import argparse

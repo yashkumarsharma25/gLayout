@@ -1,10 +1,3 @@
-"""
-Example
--------
-$ python generate_and_compile.py \
-      --model 7b=codellama/CodeLlama-7b-Instruct-hf \
-      --temperature 0.0
-"""
 from __future__ import annotations
 
 import argparse
@@ -51,7 +44,6 @@ def main() -> None:
         add_help=False,  # let sub-parser handle duplicates
     )
 
-    # Known wrapper-specific flags
     parser.add_argument(
         "--output_dir",
         default=str(DEFAULT_OUTPUT_DIR),
