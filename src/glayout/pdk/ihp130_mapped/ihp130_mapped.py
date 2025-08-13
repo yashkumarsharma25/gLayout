@@ -64,7 +64,7 @@ ihp130_glayer_mapping = {
     "met4":       "metal4",
     "via3":       "via3",
     "met3":       "metal3",
-    "via2":       "metal2",
+    "via2":       "via2",
     "met2":       "metal2",
     "via1":       "via1",
     "met1":       "metal1",
@@ -99,11 +99,11 @@ ihp130_glayer_mapping = {
     "active_diff_label": "activ_pin",
 }
 
-ip130_lydrc_file_path = Path(__file__).resolve().parent / "ihp130_TO_july_25_drc.lydrc"
-pdk_root_env = os.getenv('PDK_ROOT')
-if pdk_root_env is None:
+#ip130_lydrc_file_path = Path(__file__).resolve().parent / "ihp130_TO_july_25_drc.lydrc"
+if os.getenv('PDK_ROOT') is None:
     raise EnvironmentError("PDK_ROOT environment variable is not set.")
-pdk_root = Path(pdk_root_env)
+else:
+    pdk_root = Path(os.getenv('PDK_ROOT'))
 
 ip130_lydrc_file_path = pdk_root / "libs.tech" / "klayout" / "tech" / "drc" / "sg13g2_minimal.lydrc"
 
