@@ -1,3 +1,5 @@
+## Mac Specific 
+
 # Folder view configuration files
 .DS_Store
 Desktop.ini
@@ -10,27 +12,10 @@ Thumbs.db
 .Spotlight-V100
 .Trashes
 
-# Compiled Python files
-*.pyc
-
-# Compiled C++ files
-*.out
-
-# Application specific files
-venv
-node_modules
-.sass-cache
-
-## Mac Specific 
-
 # General
-.DS_Store
 .AppleDouble
 .LSOverride
 Icon[]
-
-# Thumbnails
-._*
 
 # Files that might appear in the root of a volume
 .DocumentRevisions-V100
@@ -47,6 +32,20 @@ Icon[]
 Network Trash Folder
 Temporary Items
 .apdisk
+
+
+# Compiled Python files
+*.pyc
+
+# Compiled C++ files
+*.out
+
+# Application specific files
+venv
+node_modules
+.sass-cache
+
+**/.ipynb_checkpoints/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
