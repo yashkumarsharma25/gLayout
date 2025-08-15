@@ -2,7 +2,7 @@
 usage: from ihp130_mapped import ihp130_mapped_pdk
 """
 
-from ..ihp130_mapped.grules import grulesobj
+from ..ihp130_mapped.ihp130_grules import grulesobj
 from ..mappedpdk import MappedPDK, SetupPDKFiles
 from pathlib import Path
 import os
@@ -99,13 +99,14 @@ ihp130_glayer_mapping = {
     "active_diff_label": "activ_pin",
 }
 
-#ip130_lydrc_file_path = Path(__file__).resolve().parent / "ihp130_TO_july_25_drc.lydrc"
+ip130_lydrc_file_path = Path(__file__).resolve().parent / "ihp130_drc.lydrc"
+
 if os.getenv('PDK_ROOT') is None:
     raise EnvironmentError("PDK_ROOT environment variable is not set.")
 else:
     pdk_root = Path(os.getenv('PDK_ROOT'))
 
-ip130_lydrc_file_path = pdk_root / "libs.tech" / "klayout" / "tech" / "drc" / "sg13g2_minimal.lydrc"
+#ip130_lydrc_file_path = pdk_root / "libs.tech" / "klayout" / "tech" / "drc" / "sg13g2_minimal.lydrc"
 
 # lvs_schematic_ref_file = Path(__file__).resolve().parent / "ihp130_lvs.spice"
 # magic_drc_file = pdk_root / "libs.tech" / "magic" / "ihp130.magicrc"
