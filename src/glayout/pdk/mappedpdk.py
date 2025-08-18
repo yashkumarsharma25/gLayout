@@ -333,40 +333,63 @@ class MappedPDK(Pdk):
             layout_path = Path(layout).resolve()
         else:
             raise TypeError("layout should be a Component, Path, or string")
-        if not layout_path.is_file():
-            raise ValueError("layout must exist, the path given is not a file")
-        # find report file path, if None then use current directory
-        report_path = (
-            Path(output_dir_or_file).resolve()
-            if output_dir_or_file
-            else Path.cwd().resolve()
-        )
+        
+        ## find report file path, if None then use current directory
+        if output_dir_or_file:
+            report_dir = Path(output_dir_or_file).resolve()
+        else:
+            report_dir = Path.cwd() / "klayout_drc"
+        
+        # Ensure the folder exists
+        report_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Construct report file path inside that folder
+        report_path = report_dir / f"{self.name}_{layout_path.stem}_drcreport.lyrdb"
 
-        if report_path.is_dir():
-            report_path = Path(
-                report_path
-                / str(
-                    self.name
-                    + layout_path.name.replace(layout_path.suffix, "")
-                    + "_drcreport.lyrdb"
-                )
-            )
-        elif not report_path.is_file():
-            raise ValueError("report_path must be file or dir")
+        #if not report_path.is_file():
+        #    raise ValueError("report_path must be file or dir")
+
+        ##################### Checking for Klayout version ##################################
+        res = subprocess.run(["klayout", "-v"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # KLayout prints version to stdout (e.g., "KLayout 0.29.8 (2023-...)" or "0.29.8")
+        out = (res.stdout or "").strip() or (res.stderr or "").strip()
+        
+        # Extract first version-like token (e.g., 0.29.8)
+        m = re.search(r"\b(\d+\.\d+(?:\.\d+)?)\b", out)
+        kver = m.group(1) if m else out  # fallback to the raw line if pattern not found
+        print("KLayout version:", kver)
+        
+        # Convert to tuple for proper version comparison
+        version_tuple = tuple(map(int, kver.split('.')))
+        
         # run klayout drc
-        drc_args = [
-            "klayout",
-            "-b",
-            "-r",
-            str(self.pdk_files['klayout_drc_file']),
-            "-rd",
-            "input=" + str(layout_path),
-            "-rd",
-            "report=" + str(report_path),
-        ]
+        if version_tuple <= (0, 29):
+            drc_args = [
+                "klayout",
+                "-b",
+                "-r",
+                str(self.pdk_files['klayout_drc_file']),
+                "-rd",
+                "input=" + str(layout_path),
+                "-rd",
+                "report=" + str(report_path),
+            ]
+        elif version_tuple > (0, 29):
+            drc_args = [
+                "klayout",
+                "-b",                      # batch mode
+                "-r",  str(self.pdk_files['klayout_drc_file']),  # DRC runset (relies on implicit default layout)
+                "-rd", f"report_file={str(report_path)}",  # variable the runset reads for report(...)
+                "-rd", f"in_gds={str(layout_path)}"
+            ]
+        else:
+            raise RuntimeError("klayout version not recognised!")
+        
+                
         rtr_code = subprocess.Popen(drc_args).wait()
         if rtr_code:
             raise RuntimeError("error running klayout DRC")
+        
         # clean up and return
         if tempdir:
             tempdir.cleanup()
@@ -374,6 +397,9 @@ class MappedPDK(Pdk):
         # https://github.com/google/globalfoundries-pdk-libs-gf180mcu_fd_pr/blob/main/rules/klayout/drc
         # eventually I can return more info on the drc run, but for now just void and view the lyrdb in klayout
 
+        print(f"DRC report saved at: {report_path}")
+        print("Use Tools -> Marker Browser in KLayout to view the violations.")
+        
         # Open DRC output XML file
         drc_tree = ET.parse(report_path.resolve())
         drc_root = drc_tree.getroot()
