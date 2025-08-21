@@ -218,8 +218,6 @@ netgen_lvs_result = {pdk}.lvs_netgen(
 - If the return code of the python script is non zero, the workflow is deemed to have failed and the GitHub actions reflects this
 - If multiple things need to be checked, the scripts can be broken down into multiple sequential jobs, all of which have to pass for a CI check to be successful 
 
-![General_CI_Flow](_images/general_ci_flow.png)
-
 Below is the flow for how contributor-added components will be evaluated by the Github Actions Workflow. The following are absolute musts to take care of when contributing code (in decreasing order of importance): 
 
 1. 1.Default values must be provided for the component’s parameters. This is done as follows:
@@ -233,9 +231,6 @@ Below is the flow for how contributor-added components will be evaluated by the 
     ```
 2. Look at existing pcell examples to see how to code in an optimal manner
 3. Include descriptive docstrings in the functions to describe what the cell is supposed to do. Using the [vscode extension](https://marketplace.visualstudio.com/items?itemName=njpwerner.autodocstring) is helpful for templating the docstring
-<p align="center">
-<img src="./_images/action_workflow.png" width="500" height="850">
-</p>
 
 ## Best Practices for Contributing Components
 ### README
