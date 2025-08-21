@@ -2,7 +2,7 @@
 usage: from gf180_mapped import gf180_mapped_pdk
 """
 
-from ..gf180_mapped.grules import grulesobj
+from ..gf180_mapped.gf180_grules import grulesobj
 from ..mappedpdk import MappedPDK, SetupPDKFiles
 from pathlib import Path
 import os

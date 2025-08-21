@@ -3,7 +3,7 @@ usage: from sky130_mapped import sky130_mapped_pdk
 """
 
 from ..mappedpdk import MappedPDK, SetupPDKFiles
-from ..sky130_mapped.grules import grulesobj
+from ..sky130_mapped.sky130_grules import grulesobj
 from pathlib import Path
 from ..sky130_mapped.sky130_add_npc import sky130_add_npc
 import os
