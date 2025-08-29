@@ -2,13 +2,45 @@
 # Contributor Guide: How to Use GLayout for Chipathon
 This section guides you through the steps to contribute a new design to the GLayout project, especially in the context of Chipathon 2025 or similar events.
 
-## Setting up VS Code 💻
+## Table of Contents
+- [Prerequisites](#prerequisites)
+- [Setup](#setting-up-vs-code)
+- [Git Configuration](#setting-up-git)
+- [Pull Request Guidelines](#pull-request-guidelines)
+- [Running GLayout](#running-glayout)
+- [Component Creation](#creating-components)
+- [DRC and LVS Verification](#drc-and-lvs-checks)
+- [Troubleshooting](#troubleshooting)
+- [Parametric Simulations](#parametric-simulations-work-in-progress)
+- [CI Checks](#ci-checks)
+- [Best Practices](#best-practices-for-contributing-components)
+
+## Prerequisites 
+Before starting, ensure you have:
+- Python 3.8+ installed
+- Git configured with your credentials
+- Access to PDK files (Sky130 or GF180MCU)
+- KLayout and Magic installed for DRC/LVS verification
+
+### Verify Installation
+```bash
+# Check Python version
+python --version
+
+# Verify GLayout installation
+python -c "import glayout; print('GLayout successfully imported')"
+
+# Check available PDKs
+python -c "from glayout import sky130, gf180; print('PDKs available')"
+```
+
+## Setting up VS Code 
 VS Code is recommended because it makes working with Jupyter notebooks and terminals easier.
 - Install VS Code (you can simply search “Download VS Code” on Google)
 - Open VS Code — if prompted to install WSL (Windows Subsystem for Linux), allow the installation
 - Once installed, you can use the built-in terminal for all future commands
 
-## Setting Up Git 💼
+## Setting Up Git 
 - Check if Git is installed 
   - Use the following command in your terminal and you should see a path where git is installed
     ```shell
@@ -25,7 +57,7 @@ VS Code is recommended because it makes working with Jupyter notebooks and termi
 - Navigate to [Chipathon 2025 github page](https://github.com/sscs-ose/sscs-ose-chipathon.github.io) and find Code -> Copy button
 - Paste the copied URL after the command “git clone”. It will download the files and also help in push your request once you are ready to contribute.
 
-## Pull Request Guidelines 📬 
+## Pull Request Guidelines  
 Only contributions that follow the required format will be eligible for review. Please ensure the following:
 
 1. Write a brief description of the component in the PR’s description
@@ -43,7 +75,7 @@ Only contributions that follow the required format will be eligible for review. 
 7. If any bugs are found, ensure that they are reported before you try to find a workaround
 8. Take reference from the larger pcells implemented to get a rough idea of how pcells should ideally be coded up. 
 
-## Running GLayout 🛠️
+## Running GLayout 
 
 **GLayout** is a Python-based code-to-layout framework that leverages `gdsfactory` as its backend to automate analog layout design. 
 
@@ -112,61 +144,131 @@ A port describes a single edge of a polygon. The most useful port attributes are
 - **USE PORTS**: be sure to correctly add and label ports to components you make
 
 ## Pcells (Implemented and Otherwise)
-The currently implemented parametric cells, and planned cells can be found in this [sheet](https://docs.google.com/spreadsheets/d/1KGBN63gHc-hpxVrqoAoOkerA7bl1-sZ44X4uEn-ILGE/edit?gid=0#gid=0).
+The currently implemented parametric cells, and planned cells can be found in this [sheet](https://docs.google.com/spreadsheets/d/1KGBN63gHc-hpxVrqoAoOkerA7bl1-sZ44X4uEn-ILGE/edit?gid=0#gid=0). Besides the sheet, pcells implemented in the glayout framework can be found in the [blocks/elementary/](https://github.com/ReaLLMASIC/gLayout/tree/main/blocks/elementary) folder.
 Contributors are encouraged to implement unimplemented Pcells. Refer to docstrings for implemented ones.
 
 ## Creating Components
 
-1. Make a fork of the repo and install tools
-2. Create a folder for your component in `glayout/flow/blocks/`
-    - Name your folder after your component
-    - Place the folder as a subfolder of the `blocks` folder
-    - The following files are mandatory
-      - `.py` file is required for layout generation
-      - a .spice schematic file (netlist) used as reference
-      - a testbench for simulation 
-    - Add the netlist to the component using the following command
-      ```shell
-      with open(spice_netlist_file, 'r') as f:
-        net = f.read()
-        component.info['netlist'] = net
-      ```
-      - Component should be DRC, LVS clean
-      - If spice simulation applies, then a regression test is necessary 
-3. Create an `__init__.py`
-    - Add your file’s path to an `__init__.py` in your component directory’s top level.
-    - This is required so that your component can be imported
-    - Example: `from glayout.flow.component.blocks.folder_name import component_name`
-4. Add a README with circuit parameters and other details
-    - You can include a compressed jpeg image of the `.gds` layout
+### Step 1: Setup Your Component Directory
+```bash
+# Create component directory structure
+mkdir -p glayout/flow/blocks/my_component
+cd glayout/flow/blocks/my_component
+```
+
+### Step 2: Required Files Checklist
+- [ ] `my_component.py` - Main layout generation code
+- [ ] `my_component.spice` - Reference netlist  
+- [ ] `my_component_tb.spice` - Simulation testbench
+- [ ] `__init__.py` - Python package initialization
+- [ ] `README.md` - Component documentation
+
+### Step 3: Implement Layout Function
+```python
+from glayout import MappedPDK
+from gdsfactory import Component
+from gdsfactory.cell import cell
+
+@cell
+def my_component(
+    pdk: MappedPDK,
+    width: Optional[float] = 5.0,
+    length: Optional[float] = 0.5
+) -> Component:
+    """
+    Generate my component layout.
+    
+    Args:
+        pdk: Process design kit
+        width: Device width in microns
+        length: Device length in microns
+        
+    Returns:
+        Component: Generated layout component
+    """
+    # Implementation here
+    pass
+```
+
+### Step 4: Add Netlist to Component
+```python
+# Add the netlist to the component
+with open(spice_netlist_file, 'r') as f:
+    net = f.read()
+    component.info['netlist'] = net
+```
+
+### Step 5: Create Package Initialization
+Create an `__init__.py` file in your component directory:
+```python
+from glayout.flow.component.blocks.my_component import my_component
+```
+
+### Step 6: Ensure DRC and LVS Clean
+- Component should be DRC and LVS clean
+- If spice simulation applies, then a regression test is necessary
+- Add a README with circuit parameters and other details
+- You can include a compressed jpeg image of the `.gds` layout
 
 ## DRC and LVS Checks
 DRC (magic and klayout) and LVS (netgen) is supported for glayout components
 
 ### Magic DRC
-  ```shell
-  drc_result = {pdk}.drc_magic(
+```python
+drc_result = {pdk}.drc_magic(
+    layout,
+    design_name,
+    pdk_root=None,
+    magic_drc_file=None
+)
+```
+**Parameters:**
+- `layout`: Component object, string path, or pathlib.Path to .gds file to run DRC on
+- `design_name`: String name for the component (used in report generation)
+- `pdk_root`: Optional path (str, pathlib.Path, or None) to PDK installation (defaults to None)
+- `magic_drc_file`: Optional path (str, pathlib.Path, or None) to .magicrc file for your PDK
+
+**Returns:**
+- `drc_result`: Dictionary containing DRC results and subprocess return codes
+
+**Usage Example:**
+```python
+# Basic usage
+result = sky130.drc_magic(component, "my_design")
+
+# With custom PDK root
+result = sky130.drc_magic(
     component, 
-    design_name
-    )
-  ```
-  - Here, `{pdk}` is the process-design-kit using which the component has been generated (sky130 and gf180 supported)
-  - `design_name` is the component's specified name
-    - if not already specified, do `component.name = {some_design_name}`
-  - the pdk_root can also be specified (the function assumes `/usr/bin/miniconda3/`)
-  - The magic drc report will be written to `glayout/flow/regression/drc`, unless an alternate path is specified (**WIP**, report is currently written out only if a path is specified)
+    "my_design", 
+    pdk_root="/path/to/pdk"
+)
+print(f"DRC result: {result}")
+```
 
 
 ### Klayout DRC
-```shell
+```python
 klayout_drc_result = {pdk}.drc(
-  component, 
-  report_path
-  )
+    layout,
+    output_dir_or_file=None
+)
 ```
-  - This will run klayout drc on the component given (can also be a `.gds` file)
-  - if the report path is given, the generated report will be written there
-  - `klayout_drc_result` is a bool which says if drc is clean or not
+**Parameters:**
+- `layout`: Component object, string path, or pathlib.Path to .gds file to check
+- `output_dir_or_file`: Optional path (str, pathlib.Path, or None) where DRC report will be saved
+
+**Returns:**
+- `klayout_drc_result`: Result of DRC check
+
+**Usage Example:**
+```python
+# Basic usage
+result = gf180.drc(my_component)
+
+# With output file
+result = gf180.drc(my_component, output_dir_or_file="./reports/my_design_drc.txt")
+print(f"DRC result: {result}")
+```
 
 ### Netgen LVS
 ```python
@@ -183,6 +285,22 @@ netgen_lvs_result = {pdk}.lvs_netgen(
   - `netgen_lvs_result` is a dictionary that will continue the netgen and magic subprocess return codes and the result as a string
   - The lvs report will be written to `glayout/flow/regression/lvs`, unless an alternate path is specified (WIP, report is currently written out only if a path is specified)
 
+
+## Troubleshooting 
+
+### Common DRC Issues
+- **"Magic not found"**: Ensure Magic is installed and in PATH
+- **"PDK files missing"**: Verify PDK_ROOT environment variable
+- **"Permission denied"**: Check write permissions for report directories
+- **"Component has no ports"**: Ensure ports are properly added using `rename_ports_by_orientation`
+- **"DRC takes too long"**: Use hierarchical checking or reduce polygon count
+
+### Common LVS Issues  
+- **"Netlist mismatch"**: Verify component.info['netlist'] is properly set
+- **"Subcircuit not found"**: Check that all subcircuits are included in netlist
+- **"Port mismatch"**: Ensure layout ports match schematic ports
+- **"Device parameter mismatch"**: Check transistor W/L values in layout vs netlist
+- **"Net connectivity issues"**: Verify all connections are properly made in layout
 
 ## Parametric Simulations (Work In Progress)
 - If the spice testbench for parametric simulations is also supplied, the following command can be run
@@ -222,7 +340,7 @@ Below is the flow for how contributor-added components will be evaluated by the 
         mirror_fet_width: Optional[float] = 10,
         num_fingers: Optional[int] = 2,
         tie_layers: Optional[tuple[Optional[str], Optional[str]]] = ("met1", "met2")
-    ): -> Component
+    ) -> Component:
     ```
 2. Look at existing pcell examples to see how to code in an optimal manner
 3. Include descriptive docstrings in the functions to describe what the cell is supposed to do. Using the [vscode extension](https://marketplace.visualstudio.com/items?itemName=njpwerner.autodocstring) is helpful for templating the docstring
