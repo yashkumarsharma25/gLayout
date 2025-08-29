@@ -23,12 +23,7 @@ VS Code is recommended because it makes working with Jupyter notebooks and termi
   cd Chipathon25
   ```
 - Navigate to [Chipathon 2025 github page](https://github.com/sscs-ose/sscs-ose-chipathon.github.io) and find Code -> Copy button
-  <img src="./_images/chipathon_2025_github.png" width="1500" height="400">
-  </p>
 - Paste the copied URL after the command “git clone”. It will download the files and also help in push your request once you are ready to contribute.
-  <p align="center">
-  <img src="./_images/git-clone.png" width="700" height="100">
-  </p>
 
 ## Pull Request Guidelines 📬 
 Only contributions that follow the required format will be eligible for review. Please ensure the following:
