@@ -1,10 +1,16 @@
+from pydantic import validate_arguments
 from sys import prefix
 import numpy as np
-from typing import Any
+from typing import Any, Optional, Union
 from glayout import MappedPDK, sky130 , gf180
-from glayout.util.geometry import evaluate_bbox, to_float
-from glayout.util.comp_utils import prec_center, prec_array, prec_ref_center, to_float
-#from gdsfactory.cell import cell
+from glayout.primitives.guardring import tapring
+from glayout.routing import c_route
+from glayout.util.snap_to_grid import component_snap_to_grid
+from glayout.util.port_utils import add_ports_perimeter, rename_ports_by_list, rename_ports_by_orientation
+from glayout.util.comp_utils import prec_center, prec_array, prec_ref_center, to_float, move, align_comp_to_port, evaluate_bbox, to_decimal
+from glayout.primitives.via_gen import via_array, via_stack
+from glayout.routing.straight_route import straight_route
+from gdsfactory.cell import cell
 from gdsfactory import Component
 from gdsfactory.components import text_freetype, rectangle, rectangular_ring
 
@@ -101,12 +107,12 @@ def fill_ring_with_contacts(pdk: MappedPDK,ring_dims:dict[str,np.ndarray[Any]],
                                                distance=0.25-0.1)
     l_metal_center_position = get_mid_points_over_ring(ring_dims)
 
-    print(l_metal_dims)
+    #print(l_metal_dims)
     component = Component()
 
     for direction in l_metal_dims:
 
-        print(l_metal_dims[direction])
+        #print(l_metal_dims[direction])
         contacts = component << fill_area_with_contacts(pdk,
                                            l_metal_dims[direction]["size"],
                                            l_metal_center_position[direction],
@@ -118,7 +124,8 @@ def fill_ring_with_contacts(pdk: MappedPDK,ring_dims:dict[str,np.ndarray[Any]],
 
     return component
 
-def get_bjt_dimensions (pdk: MappedPDK, active_area: tuple[float], bjt_type: str)-> dict[str,Any]:
+def get_bjt_dimensions (pdk: MappedPDK, active_area: tuple[float, float], bjt_type:
+                        str, draw_dnwell: bool =False)-> dict[str,Any]:
     min_enclosure_tap_ncomp = float(pdk.get_grule("p+s/d","active_tap")["min_enclosure"])
     min_enclosure_tap_pcomp = float(pdk.get_grule("n+s/d","active_tap")["min_enclosure"])
     min_enclosure_dnwell_pwell = float(pdk.get_grule("dnwell",
@@ -157,8 +164,9 @@ def get_bjt_dimensions (pdk: MappedPDK, active_area: tuple[float], bjt_type: str
 
     well = {"size": np.asarray(base["enclosed_size"]) + 2*base["width"]}
     dnwell = {"size": np.asarray(well["size"]) + 2*min_enclosure_dnwell_pwell}
-    drc = {"size": (np.asarray(collector["enclosed_size"]) +
-           2*collector["width"])  if bjt_type=="pnp" else dnwell["size"] }
+    drc = {"size": dnwell["size"]  if
+           bjt_type=="npn" and draw_dnwell else (np.asarray(collector["enclosed_size"]) +
+           2*collector["width"]) }
 
 
     return {
@@ -182,7 +190,8 @@ def get_bjt_dimensions (pdk: MappedPDK, active_area: tuple[float], bjt_type: str
     }
 
 
-def draw_bjt(pdk: MappedPDK, active_area: tuple[float], bjt_type: str)->Component:
+def draw_bjt(pdk: MappedPDK, active_area: tuple[float,float], bjt_type: str,
+             draw_dnwell: bool = False, with_labels=True)->Component:
 
     component = Component()
 
@@ -195,7 +204,8 @@ def draw_bjt(pdk: MappedPDK, active_area: tuple[float], bjt_type: str)->Componen
         raise ValueError(f"Not a valid size for the bjt: {active_area}.\n"
                          f"Valid options are: {pdk.valid_bjt_sizes[bjt_type]}")
 
-    dims=get_bjt_dimensions(pdk,active_area,bjt_type)
+    dims=get_bjt_dimensions(pdk,active_area,bjt_type,
+                            draw_dnwell=draw_dnwell)
     bjt_layers= {
         "npn":("n+s/d","p+s/d","n+s/d"),
         "pnp":("p+s/d","n+s/d","p+s/d")
@@ -237,7 +247,7 @@ def draw_bjt(pdk: MappedPDK, active_area: tuple[float], bjt_type: str)->Componen
     component.add_ports(well.get_ports_list(), prefix="well_")
 
     ## Adding dnwell if required
-    if bjt_type=="npn":
+    if bjt_type=="npn" and draw_dnwell:
         dnwell = component << rectangle(
             layer=pdk.get_glayer("dnwell"), centered=True, **dims["dnwell"])
         component.add_ports(dnwell.get_ports_list(), prefix="dnwell_")
@@ -252,16 +262,27 @@ def draw_bjt(pdk: MappedPDK, active_area: tuple[float], bjt_type: str)->Componen
     component.add_ports(lvs.get_ports_list(), prefix="lvs_")
     component.add_ports(drc.get_ports_list(), prefix="drc_")
 
+
+    ## Add metals
     metal_e = component << rectangle(layer=pdk.get_glayer("met1"),
                                      centered=True, **dims["emitter_active"])
     component.add_ports(metal_e.get_ports_list(), prefix="E_")
 
-    component.add_label("E",position=metal_e.center,layer=pdk.get_glayer("met1"))
+    if with_labels:
+        component.add_label("E",position=metal_e.center,layer=pdk.get_glayer("met1"))
 
-    metal_b = component << draw_metal_over_ring(pdk,dims["base_active"],"met1","B")
+    metal_b = component << draw_metal_over_ring(pdk,
+                                                dims["base_active"],
+                                                "met1",
+                                                "B" if with_labels else
+                                                None)
     component.add_ports(metal_b.get_ports_list(), prefix="B_")
 
-    metal_c = component << draw_metal_over_ring(pdk,dims["collector_active"],"met1","C")
+    metal_c = component << draw_metal_over_ring(pdk,
+                                                dims["collector_active"],
+                                                "met1",
+                                                "C" if with_labels else
+                                                None)
     component.add_ports(metal_c.get_ports_list(), prefix="C_")
 
     contacts_e = component << fill_comp_with_contacts(pdk,
@@ -289,5 +310,477 @@ def draw_bjt(pdk: MappedPDK, active_area: tuple[float], bjt_type: str)->Componen
                                                  np.asarray((1,1))*dims["contact_size"])
 
     component.add_ports(contacts_c.get_ports_list(), prefix="contacts_c_")
+
+    return rename_ports_by_orientation(component)
+
+# drain is above source
+@cell
+def multiplier(
+    pdk: MappedPDK,
+    active_area: tuple[float,float] = (5.,5.),
+    bjt_type: str = "pnp",
+    routing: bool = True,
+    dummy: Union[bool, tuple[bool, bool]] = True,
+    bc_route_topmet: str = "met2",
+    emitter_route_topmet: str = "met2",
+    rmult: Optional[int]=None,
+    bc_rmult: int = 1,
+    emitter_rmult: int=1,
+    dummy_routes: bool=True
+) -> Component:
+    """Generic poly/sd vias generator
+    args:
+    pdk = pdk to use
+    active_area = sets the emitter active area. Needs to be a valid size
+    supported by the technology
+    routing = true or false, specfies if should create the routes for base and
+    collector
+    ****NOTE: routing metal is layed over the source drain regions regardless of routing option
+    dummy = true or false add dummy active/plus doped regions
+    bc_rmult = multiplies thickness of metal in base and collector (int only)
+    emitter_rmult = multiplies gate by adding rows to the gate via array (int only)
+    bc_route_extension = float, how far extra to extend the source/drain connections (default=0)
+    emitter_route_extension = float, how far extra to extend the gate connection (default=0)
+    dummy_routes: bool default=True, if true add add vias and short dummy base,
+    collector and emitter
+
+    ports (one port for each edge),
+    ****NOTE: source is below drain:
+    base_... all edges (top met route of base connection)
+    collector_...all edges (top met route of collector connections)
+    emitter_...all edges (top met route of emitter connections)
+    leftsd_...all ports associated with the left most via array
+    dummy_L,R_N,E,S,W ports if dummy_routes=True
+    """
+    # error checking
+    if not "met" in bc_route_topmet or not "met" in bc_route_topmet:
+        raise ValueError("topmet specified must be metal layer")
+    if rmult:
+        if rmult<1:
+            raise ValueError("rmult must be positive int")
+        bc_rmult = rmult
+        emitter_rmult = 1
+    # call finger array
+    multiplier = draw_bjt(pdk, active_area,
+                          bjt_type, draw_dnwell=False)
+    # route base and collector
+    # tested with 5x5 size, need to test with smaller sizes
+    if routing:
+
+        bcroute_minsep = pdk.get_grule(bc_route_topmet)["min_separation"]
+
+        # place via for base
+        b_N_port = multiplier.ports["B_metal_W_N"]
+        bvia = via_stack(pdk, "met1", bc_route_topmet)
+        bmet_height = bc_rmult*evaluate_bbox(bvia)[1]
+        bvia_ref = align_comp_to_port(bvia,b_N_port,alignment=('c','b'))
+        multiplier.add(bvia_ref)
+
+        # place via for the collector
+        c_S_port = multiplier.ports["C_metal_W_S"]
+        cvia = via_stack(pdk, "met1", bc_route_topmet)
+        cmet_height = bc_rmult*evaluate_bbox(cvia)[1]
+        # get the distance between the port and the bvia_ref
+        distance_bmet_cmet=  (bvia_ref.center[1]
+                              - c_S_port.center[1]
+                              - evaluate_bbox(cvia)[1]/2
+                              - bmet_height/2
+                              - cmet_height/2)
+        cvia_ref = align_comp_to_port(cvia,c_S_port,alignment=('c','t'))
+
+        # place sdvia such that metal does not overlap diffusion
+        if (distance_bmet_cmet<bcroute_minsep):
+            cvia_extension = bcroute_minsep - distance_bmet_cmet
+            cvia_ref = align_comp_to_port(cvia,c_S_port,alignment=('c','t'))
+            multiplier.add(cvia_ref.movey(-cvia_extension))
+            multiplier << straight_route(pdk, c_S_port,
+                                         cvia_ref.ports["top_met_N"])
+
+        else:
+            multiplier.add(cvia_ref)
+
+        # place emitter via at the center
+        ecenter= ((multiplier.ports["E_W"].center[0]+multiplier.ports["E_E"].center[0])/2,
+                    (multiplier.ports["E_N"].center[1]+multiplier.ports["E_S"].center[1])/2)
+        evia = rename_ports_by_list(via_stack(pdk,
+                                              "met1",
+                                              emitter_route_topmet),
+                                     [("top_met_","emitter_")])
+        evia_ref = move(evia.ref(),destination=ecenter)
+        multiplier.add(evia_ref)
+
+        # place the route met for collector and base
+
+        bc_width=  bvia_ref.ports["top_met_E"].center[0] - cvia_ref.ports["top_met_W"].center[0]
+        b_route = rectangle(size=(bc_width,
+                                  bmet_height),layer=pdk.get_glayer(bc_route_topmet),centered=True)
+        c_route = rectangle(size=(bc_width,
+                                  cmet_height),layer=pdk.get_glayer(bc_route_topmet),centered=True)
+
+        base = align_comp_to_port(b_route.copy(),
+                                  bvia_ref.ports["top_met_E"],
+                                  alignment=("l",'c'))
+        collector = align_comp_to_port(c_route.copy(),
+                                       cvia_ref.ports["top_met_W"],
+                                       alignment=("r",'c'))
+
+        multiplier.add(base)
+        multiplier.add(collector)
+        multiplier.add_ports(evia_ref.get_ports_list(prefix="emitter_"))
+        multiplier.add_ports(base.get_ports_list(), prefix="base_")
+        multiplier.add_ports(collector.get_ports_list(),prefix="collector_")
+
+    # create dummy regions
+    if isinstance(dummy, bool):
+        dummyl = dummyr = dummy
+    else:
+        dummyl, dummyr = dummy
+    if dummyl or dummyr:
+        dummy = draw_bjt(pdk, active_area,
+                         bjt_type, with_labels=False)
+        dummy << straight_route(pdk,dummy.ports["E_S"],dummy.ports["B_metal_S_N"])
+        dummy << straight_route(pdk,dummy.ports["B_metal_S_S"],dummy.ports["C_metal_S_N"])
+        dummy_separation = max(pdk.get_grule("n+s/d")["min_separation"],pdk.get_grule("p+s/d")["min_separation"])
+        dummy_space = dummy_separation  + (dummy.xmax-dummy.xmin)/2
+        sides = list()
+        if dummyl:
+            sides.append((-1,"dummy_L_"))
+        if dummyr:
+            sides.append((1,"dummy_R_"))
+        for side, name in sides:
+            dummy_ref = multiplier << dummy
+            dummy_ref.movex(side * (dummy_space + multiplier.xmax))
+            multiplier.add_ports(dummy_ref.get_ports_list(),prefix=name)
+    # ensure correct port names and return
+    return component_snap_to_grid(rename_ports_by_orientation(multiplier))
+
+
+@validate_arguments
+def __mult_array_macro(
+    pdk: MappedPDK,
+    active_area: tuple[float,float] = (5.,5.),
+    bjt_type: str = "pnp",
+    multipliers: int = 1,
+    routing: Optional[bool] = True,
+    dummy: Optional[Union[bool, tuple[bool, bool]]] = True,
+    bc_route_topmet: Optional[str] = "met2",
+    emitter_route_topmet: Optional[str] = "met2",
+    bc_route_left: Optional[bool] = True,
+    bc_rmult: int = 1,
+    emitter_rmult: int=1,
+    dummy_routes: bool=True
+) -> Component:
+    """create a multiplier array with multiplier_0 at the bottom
+    The array is correctly centered
+    """
+    # create multiplier array
+    pdk.activate()
+    # TODO: error checking
+    multiplier_arr = Component("temp multiplier array")
+    multiplier_comp = multiplier(
+        pdk,
+        active_area=active_area,
+        bjt_type=bjt_type,
+        dummy=dummy,
+        routing=routing,
+        bc_route_topmet=bc_route_topmet,
+        emitter_route_topmet=emitter_route_topmet,
+        bc_rmult=bc_rmult,
+        emitter_rmult=emitter_rmult,
+        dummy_routes=dummy_routes
+    )
+    _max_metal_separation_ps = max([pdk.get_grule("met"+str(i))["min_separation"] for i in range(1,5)])
+    min_diff_separation = max(pdk.get_grule("n+s/d")["min_separation"],pdk.get_grule("p+s/d")["min_separation"])
+    multiplier_separation = to_decimal(
+        max([ _max_metal_separation_ps, min_diff_separation])
+        + evaluate_bbox(multiplier_comp)[1]
+    )
+    for rownum in range(multipliers):
+        row_displacment = rownum * multiplier_separation - (multiplier_separation/2 * (multipliers-1))
+        row_ref = multiplier_arr << multiplier_comp
+        row_ref.movey(to_float(row_displacment))
+        multiplier_arr.add_ports(
+            row_ref.get_ports_list(), prefix="multiplier_" + str(rownum) + "_"
+        )
+    b_extension = to_decimal(0.6)
+
+    # using the C route will use the port width to make the routing
+    # then we can check the width for it and add the required space accordingly
+    # we assume the width is the same in west as the east
+
+    sample_base_port="multiplier_0_base_W"
+    sample_collector_port="multiplier_0_collector_W"
+    base_port_width= multiplier_arr[sample_base_port].width
+    collector_port_width = multiplier_arr[sample_collector_port].width
+
+    c_extension= to_decimal(to_float(b_extension)+ base_port_width/2 +
+                            collector_port_width/2 + 2*pdk.get_grule("met4")["min_separation"])
+
+    bc_side = "W" if bc_route_left else "E"
+    e_side = "E" if bc_route_left else "W"
+    #print(multiplier_arr.ports)
+    if routing and multipliers > 1:
+        for rownum in range(multipliers-1):
+            thismult = "multiplier_" + str(rownum) + "_"
+            nextmult = "multiplier_" + str(rownum+1) + "_"
+            # route bases left
+            basepfx = thismult + "base_"
+            this_base = multiplier_arr.ports[basepfx+bc_side]
+            next_base = multiplier_arr.ports[nextmult + "base_"+bc_side]
+            base_ref = multiplier_arr << c_route(pdk, this_base, next_base,
+                                                 viaoffset=(True,False),
+                                                 extension=to_float(b_extension))
+            multiplier_arr.add_ports(base_ref.get_ports_list(), prefix=basepfx)
+            # route collectors left
+            collectorpfx = thismult + "collector_"
+            this_collector = multiplier_arr.ports[collectorpfx+bc_side]
+            next_collector = multiplier_arr.ports[nextmult +
+                                                  "collector_"+bc_side]
+            collector_ref = multiplier_arr << c_route(pdk,
+                                                      this_collector,
+                                                      next_collector,
+                                                  viaoffset=(True,False),
+                                                  extension=to_float(c_extension))
+            multiplier_arr.add_ports(collector_ref.get_ports_list(),
+                                     prefix=collectorpfx)
+            # route emitter right
+            emitterpfx = thismult + "emitter_"
+            this_emitter = multiplier_arr.ports[emitterpfx+e_side]
+            next_emitter = multiplier_arr.ports[nextmult +
+                                                "emitter_"+e_side]
+            emitter_ref = multiplier_arr << c_route(pdk,
+                                                    this_emitter,
+                                                    next_emitter,
+                                                    viaoffset=(True,False),
+                                                    extension=to_float(b_extension))
+            multiplier_arr.add_ports(emitter_ref.get_ports_list(), prefix=emitterpfx)
+    multiplier_arr = component_snap_to_grid(rename_ports_by_orientation(multiplier_arr))
+    # add port redirects for shortcut names (source,drain,gate N,E,S,W)
+    for pin in ["base","collector","emitter"]:
+        for side in ["N","E","S","W"]:
+            aliasport = pin + "_" + side
+            actualport = "multiplier_0_" + aliasport
+            multiplier_arr.add_port(port=multiplier_arr.ports[actualport],name=aliasport)
+    # recenter
+    final_arr = Component()
+    marrref = final_arr << multiplier_arr
+    correctionxy = prec_center(marrref)
+    marrref.movex(correctionxy[0]).movey(correctionxy[1])
+    final_arr.add_ports(marrref.get_ports_list())
+    return component_snap_to_grid(rename_ports_by_orientation(final_arr))
+
+
+
+def pnp(
+    pdk,
+    active_area: tuple[float,float] = (5.,5.),
+    multipliers: int = 1,
+    with_substrate_tap: Optional[bool] = True,
+    with_dummy: Union[bool, tuple[bool, bool]] = True,
+    bc_route_topmet: str = "met2",
+    emitter_route_topmet: str = "met2",
+    bc_route_left: bool = True,
+    rmult: Optional[int] = None,
+    bc_rmult: int=1,
+    emitter_rmult: int=1,
+    substrate_tap_layers: tuple[str,str] = ("met2","met1"),
+    dummy_routes: bool=True
+) -> Component:
+    """Generic NMOS generator
+    pdk: mapped pdk to use
+    active_area: active area of the npn emitter
+    multipliers: number of multipliers (a multiplier is a row of fingers)
+    with_dummy: tuple(bool,bool) or bool specifying both sides dummy or neither side dummy
+    ****using the tuple option, you can specify a single side dummy such as true,false
+    with_substrate_tap: add substrate tap on the very outside perimeter of nmos
+    bc_route_topmet: specify top metal glayer for the base/collector route
+    emitter_route_topmet: specify top metal glayer for the gate route
+    bc_route_left: specify if the source/drain inter-multiplier routes should be on the left side or right side (if false)
+    rmult: if not None overrides all other multiplier options to provide a simple routing multiplier (int only)
+    bc_rmult: mulitplies the thickness of the source drain route (int only)
+    emitter_rmult: add additional via rows to the gate route via array (int only) - Currently not supported
+    substrate_tap_layers: tuple[str,str] specifying (horizontal glayer, vertical glayer) or substrate tap ring. default=("met2","met1")
+    dummy_routes: bool default=True, if true add add vias and short dummy emitter, collector and base
+    """
+    pdk.activate()
+    pnp = Component()
+    if rmult:
+        if rmult<1:
+            raise ValueError("rmult must be positive int")
+        bc_rmult = rmult
+        emitter_rmult = 1
+    # create and add multipliers to bjt
+    multiplier_arr = __mult_array_macro(
+        pdk,
+        active_area,
+        "pnp",
+        multipliers,
+        routing=True,
+        dummy=with_dummy,
+        bc_route_topmet=bc_route_topmet,
+        emitter_route_topmet=emitter_route_topmet,
+        bc_route_left=bc_route_left,
+        bc_rmult=bc_rmult,
+        emitter_rmult=emitter_rmult,
+        dummy_routes=dummy_routes
+    )
+    multiplier_arr_ref = multiplier_arr.ref()
+    pnp.add(multiplier_arr_ref)
+    pnp.add_ports(multiplier_arr_ref.get_ports_list())
+    # add substrate if substrate
+    if with_substrate_tap:
+        tap_separation = max(
+            pdk.util_max_metal_seperation(),
+            pdk.get_grule("active_diff", "active_tap")["min_separation"],
+        )
+        tap_separation += pdk.get_grule("n+s/d", "active_tap")["min_enclosure"]
+        tap_encloses = (
+            2 * (tap_separation + pnp.xmax),
+            2 * (tap_separation + pnp.ymax),
+        )
+        substrate_ref = pnp << tapring(
+            pdk,
+            enclosed_rectangle=tap_encloses,
+            sdlayer="n+s/d",
+            horizontal_glayer=substrate_tap_layers[0],
+            vertical_glayer=substrate_tap_layers[1],
+        )
+        pnp.add_ports(substrate_ref.get_ports_list(), prefix="substrate_")
+
+        if isinstance(with_dummy, bool):
+            dummyl = dummyr = with_dummy
+        else:
+            dummyl, dummyr = with_dummy
+
+        for row in range(multipliers):
+            if dummyl:
+                pnp<<straight_route(pdk,pnp.ports[f"multiplier_{row}_dummy_L_C_metal_W_W"],pnp.ports[f"substrate_W_top_met_W"],glayer2="met1")
+            if dummyr:
+                pnp<<straight_route(pdk,pnp.ports[f"multiplier_{row}_dummy_R_C_metal_E_E"],pnp.ports[f"substrate_E_top_met_E"],glayer2="met1")
+
+    component =  rename_ports_by_orientation(pnp).flatten()
+
+    #component.info['netlist'] = fet_netlist(
+    #    pdk,
+    #    circuit_name="PNP",
+    #    model=pdk.models['pnp'],
+    #    multipliers=multipliers,
+    #    with_dummy=with_dummy
+    #)
+
+    return component
+
+def npn(
+    pdk,
+    active_area: tuple[float,float] = (5.,5.),
+    multipliers: int = 1,
+    with_dnwell: Optional[bool] = True,
+    with_dummy: Union[bool, tuple[bool, bool]] = True,
+    with_substrate_tap: bool=True,
+    bc_route_topmet: str = "met2",
+    emitter_route_topmet: str = "met2",
+    bc_route_left: bool = True,
+    rmult: Optional[int] = None,
+    bc_rmult: int=1,
+    emitter_rmult: int=1,
+    substrate_tap_layers: tuple[str,str] = ("met2","met1"),
+    dummy_routes: bool=True
+) -> Component:
+    """Generic NMOS generator
+    pdk: mapped pdk to use
+    active_area: active area of the npn emitter
+    multipliers: number of multipliers (a multiplier is a row of fingers)
+    with_dummy: tuple(bool,bool) or bool specifying both sides dummy or neither side dummy
+    ****using the tuple option, you can specify a single side dummy such as true,false
+    with_substrate_tap: add substrate tap on the very outside perimeter of nmos
+    bc_route_topmet: specify top metal glayer for the base/collector route
+    emitter_route_topmet: specify top metal glayer for the gate route
+    bc_route_left: specify if the source/drain inter-multiplier routes should be on the left side or right side (if false)
+    rmult: if not None overrides all other multiplier options to provide a simple routing multiplier (int only)
+    bc_rmult: mulitplies the thickness of the source drain route (int only)
+    emitter_rmult: add additional via rows to the gate route via array (int only) - Currently not supported
+    substrate_tap_layers: tuple[str,str] specifying (horizontal glayer, vertical glayer) or substrate tap ring. default=("met2","met1")
+    dummy_routes: bool default=True, if true add add vias and short dummy emitter, collector and base
+    """
+    pdk.activate()
+    npn = Component()
+    if rmult:
+        if rmult<1:
+            raise ValueError("rmult must be positive int")
+        bc_rmult = rmult
+        emitter_rmult = 1
+    # create and add multipliers to bjt
+    multiplier_arr = __mult_array_macro(
+        pdk,
+        active_area,
+        "npn",
+        multipliers,
+        routing=True,
+        dummy=with_dummy,
+        bc_route_topmet=bc_route_topmet,
+        emitter_route_topmet=emitter_route_topmet,
+        bc_route_left=bc_route_left,
+        bc_rmult=bc_rmult,
+        emitter_rmult=emitter_rmult,
+        dummy_routes=dummy_routes
+    )
+    multiplier_arr_ref = multiplier_arr.ref()
+    npn.add(multiplier_arr_ref)
+    npn.add_ports(multiplier_arr_ref.get_ports_list())
+
+    # add nwell
+    nwell_glayer = "dnwell" if with_dnwell else "nwell"
+    npn.add_padding(
+        layers=(pdk.get_glayer(nwell_glayer),),
+        default=pdk.get_grule("dnwell", "pwell")["min_enclosure"],
+    )
+    npn = add_ports_perimeter(npn,layer=pdk.get_glayer(nwell_glayer),prefix="well_")
+
+    # Required for DRC the BJT_DRC layer
+    npn.add_padding(
+        layers=(pdk.get_glayer("drc_bjt"),),
+        default=0,
+    )
+
+    # add substrate tap if with_substrate_tap
+    if with_substrate_tap:
+        substrate_tap_separation = pdk.get_grule("dnwell", "active_tap")[
+            "min_separation"
+        ]
+        substrate_tap_encloses = (
+            2 * (substrate_tap_separation + npn.xmax),
+            2 * (substrate_tap_separation + npn.ymax),
+        )
+        substrate_ref = npn << tapring(
+            pdk,
+            enclosed_rectangle=substrate_tap_encloses,
+            sdlayer="p+s/d",
+            horizontal_glayer=substrate_tap_layers[0],
+            vertical_glayer=substrate_tap_layers[1],
+        )
+
+        npn.add_ports(substrate_ref.get_ports_list(), prefix="substrate_")
+
+        if isinstance(with_dummy, bool):
+            dummyl = dummyr = with_dummy
+        else:
+            dummyl, dummyr = with_dummy
+
+        for row in range(multipliers):
+            if dummyl:
+                npn<<straight_route(pdk,npn.ports[f"multiplier_{row}_dummy_L_C_metal_W_W"],npn.ports[f"substrate_W_top_met_W"],glayer2="met1")
+            if dummyr:
+                npn<<straight_route(pdk,npn.ports[f"multiplier_{row}_dummy_R_C_metal_E_E"],npn.ports[f"substrate_E_top_met_E"],glayer2="met1")
+
+
+    component =  rename_ports_by_orientation(npn).flatten()
+
+    #component.info['netlist'] = fet_netlist(
+    #    pdk,
+    #    circuit_name="NPN",
+    #    model=pdk.models['npn'],
+    #    multipliers=multipliers,
+    #    with_dummy=with_dummy
+    #)
 
     return component
