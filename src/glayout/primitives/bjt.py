@@ -620,7 +620,7 @@ def __mult_array_macro(
                                                   (multiplier_arr.ymax +
                                                       multiplier_arr.ymin)/2))
 
-                nref_port_emitter= move(ref_port_base,
+                nref_port_emitter= move(ref_port_emitter,
                                      destination=(ref_port_emitter.center[0] +
                                                   e_distances_by_element[unique_elements[rownum]]
                                                   + to_float(b_extension),
