@@ -554,8 +554,8 @@ def __mult_array_macro(
 
     dimension_wo_routing = evaluate_bbox(multiplier_arr)
     #print(multiplier_arr.ports)
-    if routing and multipliers > 1:
-        if pattern is None:
+    if routing:
+        if pattern is None and multipliers > 1:
             for rownum in range(multipliers-1):
                 thismult = "multiplier_" + str(rownum) + "_"
                 nextmult = "multiplier_" + str(rownum+1) + "_"
@@ -590,7 +590,7 @@ def __mult_array_macro(
                                                         viaoffset=(True,False),
                                                         extension=to_float(b_extension))
                 multiplier_arr.add_ports(emitter_ref.get_ports_list(), prefix=emitterpfx)
-        else:
+        elif pattern is not None:
             for rownum in range(len(unique_elements)):
                 this_id_pfx = unique_elements[rownum] + "_"
 
