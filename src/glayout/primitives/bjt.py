@@ -479,6 +479,7 @@ def __mult_array_macro(
     dummy_routes: bool=True,
     pattern: Union[list[str], list[int], None] = None,
     is_bc_short: bool = False,
+    is_bc_shared: bool = False,
     centered: bool = True,
     dummy_separation_rmult: int = 0
 ) -> Component:
@@ -543,7 +544,10 @@ def __mult_array_macro(
         e_pattern_distances = [distance*n for n in range(len(unique_elements))]
 
         if is_bc_short:
-            bc_pattern_distances = e_pattern_distances
+            if is_bc_shared:
+                bc_pattern_distances = [0]*len(unique_elements)
+            else:
+                bc_pattern_distances = e_pattern_distances
 
         bc_distances_by_element = dict(zip(unique_elements,bc_pattern_distances))
         e_distances_by_element = dict(zip(unique_elements,e_pattern_distances))
@@ -632,20 +636,23 @@ def __mult_array_macro(
                                        layer=pdk.get_glayer(eglayer_plusone),
                                        centered=True)
 
-                base_route_ref = align_comp_to_port(sample_route.copy(),
-                                       nref_port_base,
-                                       alignment=("l",'c'))
-                multiplier_arr.add(base_route_ref)
-                multiplier_arr.add_ports(base_route_ref.get_ports_list(),
-                                         prefix=this_base_pfx)
-
-                if not is_bc_short:
-                    collector_route_ref = align_comp_to_port(sample_route.copy(),
-                                           nref_port_collector,
+                if not is_bc_shared or rownum<1:
+                    base_route_ref = align_comp_to_port(sample_route.copy(),
+                                           nref_port_base,
                                            alignment=("l",'c'))
-                    multiplier_arr.add(collector_route_ref)
-                    multiplier_arr.add_ports(collector_route_ref.get_ports_list(),
-                                             prefix=this_collector_pfx)
+                    multiplier_arr.add(base_route_ref)
+                    if is_bc_shared:
+                        this_base_pfx = "base_"
+                    multiplier_arr.add_ports(base_route_ref.get_ports_list(),
+                                             prefix=this_base_pfx)
+
+                    if not is_bc_short and not is_bc_shared:
+                        collector_route_ref = align_comp_to_port(sample_route.copy(),
+                                               nref_port_collector,
+                                               alignment=("l",'c'))
+                        multiplier_arr.add(collector_route_ref)
+                        multiplier_arr.add_ports(collector_route_ref.get_ports_list(),
+                                                 prefix=this_collector_pfx)
 
                 emitter_route_ref = align_comp_to_port(sample_route.copy(),
                                        nref_port_emitter,
@@ -669,8 +676,12 @@ def __mult_array_macro(
                 emitterpfx = thismult + "emitter_"
                 this_emitter = multiplier_arr.ports[emitterpfx+e_side]
 
-                base_route=multiplier_arr.ports[str(pat)+"_base_"+e_side]
-                collector_route=multiplier_arr.ports[str(pat)+"_collector_"+e_side] if not is_bc_short else base_route
+                if not is_bc_shared:
+                    base_route=multiplier_arr.ports[str(pat)+"_base_"+e_side]
+                    collector_route=multiplier_arr.ports[str(pat)+"_collector_"+e_side] if not is_bc_short else base_route
+                else:
+                    base_route = multiplier_arr.ports["base_"+e_side]
+                    collector_route = base_route
                 emitter_route=multiplier_arr.ports[str(pat)+"_emitter_"+bc_side]
 
                 # creating the connections from each of the ports to the
@@ -686,11 +697,12 @@ def __mult_array_macro(
 
     multiplier_arr = component_snap_to_grid(rename_ports_by_orientation(multiplier_arr))
     # add port redirects for shortcut names (source,drain,gate N,E,S,W)
-    for pin in ["base","collector","emitter"]:
-        for side in ["N","E","S","W"]:
-            aliasport = pin + "_" + side
-            actualport = "multiplier_0_" + aliasport
-            multiplier_arr.add_port(port=multiplier_arr.ports[actualport],name=aliasport)
+    if pattern is None:
+        for pin in ["base","collector","emitter"]:
+            for side in ["N","E","S","W"]:
+                aliasport = pin + "_" + side
+                actualport = "multiplier_0_" + aliasport
+                multiplier_arr.add_port(port=multiplier_arr.ports[actualport],name=aliasport)
     # recenter
     final_arr = Component()
     marrref = final_arr << multiplier_arr
@@ -717,7 +729,8 @@ def __mult_2dim_array_macro(
     emitter_rmult: int=1,
     dummy_routes: bool=True,
     pattern: Union[list[list[str]], list[list[int]], list[str], list[int], None] = None,
-    is_bc_short: bool = False
+    is_bc_short: bool = False,
+    is_bc_shared: bool = False
 ) -> Component:
     """create a multiplier array with multiplier_0 at the bottom
     The array is correctly centered
@@ -757,6 +770,7 @@ def __mult_2dim_array_macro(
             dummy_routes=dummy_routes,
             pattern=column_pattern,
             is_bc_short=is_bc_short,
+            is_bc_shared=is_bc_shared,
             centered=False
         )
         l_cols.append(multiplier_arr)
@@ -805,6 +819,7 @@ def __mult_2dim_array_macro(
                 dummy_routes=dummy_routes,
                 pattern=t_pattern[0],
                 is_bc_short=is_bc_short,
+                is_bc_shared=is_bc_shared,
                 centered=False,
                 dummy_separation_rmult=dummy_separation_rmult
             )
@@ -826,6 +841,7 @@ def __mult_2dim_array_macro(
                 dummy_routes=dummy_routes,
                 pattern=t_pattern[-1],
                 is_bc_short=is_bc_short,
+                is_bc_shared=is_bc_shared,
                 centered=False,
                 dummy_separation_rmult=dummy_separation_rmult
             )
@@ -859,9 +875,14 @@ def __mult_2dim_array_macro(
 
     sample_element = list(element_positions.keys())[0]
     sample_col=element_positions[sample_element][0]
-    sample_base_port="col_"+ str(sample_col) +"_" + sample_element + "_base_S"
-    sample_collector_port=( "col_"+ str(sample_col)+"_" + sample_element +
-                           "_collector_S" ) if not is_bc_short else sample_base_port
+    if not is_bc_shared:
+        sample_base_port="col_"+ str(sample_col) +"_" + sample_element + "_base_S"
+        sample_collector_port=( "col_"+ str(sample_col)+"_" + sample_element +
+                               "_collector_S" ) if not is_bc_short else sample_base_port
+    else:
+        sample_base_port="col_"+ str(sample_col) +"_base_S"
+        sample_collector_port= sample_base_port
+
     base_port_width= multiplier_2dim_arr[sample_base_port].width
     collector_port_width = multiplier_2dim_arr[sample_collector_port].width
     bc_distance = base_port_width/2 + collector_port_width/2 + 2*pdk.get_grule("met4")["min_separation"]
@@ -873,16 +894,40 @@ def __mult_2dim_array_macro(
     bc_side = "S" if bc_route_bottom else "N"
     e_side = "N" if bc_route_bottom else "S"
 
-    if not is_bc_short:
-        pins = ["collector", "base", "emitter"]
-        sides = [bc_side, bc_side, e_side]
-        distances = [0, bc_distance, 0]
-        shift_factors = [2, 2, 1]
+    if not is_bc_shared:
+        if not is_bc_short:
+            pins = ["collector", "base", "emitter"]
+            sides = [bc_side, bc_side, e_side]
+            distances = [0, bc_distance, 0]
+            shift_factors = [2, 2, 1]
+        else:
+            pins = ["base", "emitter"]
+            sides = [bc_side, e_side]
+            distances = [0, 0]
+            shift_factors = [1, 1]
     else:
-        pins = ["base", "emitter"]
-        sides = [bc_side, e_side]
-        distances = [0, 0]
-        shift_factors = [1, 1]
+        pins = ["emitter"]
+        sides = [e_side]
+        distances = [0]
+        shift_factors = [ 1]
+
+    if is_bc_shared:
+        for n in range(len(pattern[0])-1):
+            this_portpfx = "col_" + str(n) + "_"
+            next_portpfx = "col_" + str(n+1) + "_"
+            this_port = this_portpfx + "base_" + bc_side
+            next_port = next_portpfx + "base_" + bc_side
+
+            ref = multiplier_2dim_arr << c_route(pdk,
+                                                      multiplier_2dim_arr.ports[this_port],
+                                                      multiplier_2dim_arr.ports[next_port],
+                                                  viaoffset=(True,False),
+                                                  extension=0)
+            multiplier_2dim_arr.add_ports(ref.get_ports_list(),
+                                          prefix="_".join(["route",
+                                                           str(n),
+                                                           "base"]))
+
 
     correction_factor=0
     for n, element in enumerate(element_positions.keys()):
@@ -917,6 +962,7 @@ def __mult_2dim_array_macro(
                                                                str(l_positions[i_pos]),
                                                                pin]))
 
+
     return multiplier_2dim_arr
 
 def pnp(
@@ -934,7 +980,8 @@ def pnp(
     substrate_tap_layers: tuple[str,str] = ("met2","met1"),
     dummy_routes: bool=True,
     pattern: Union[list[str], list[int], None] = None,
-    is_bc_short: bool = False
+    is_bc_short: bool = False,
+    is_bc_shared: bool = False
 ) -> Component:
     """Generic NMOS generator
     pdk: mapped pdk to use
@@ -978,7 +1025,8 @@ def pnp(
         emitter_rmult=emitter_rmult,
         dummy_routes=dummy_routes,
         pattern=pattern,
-        is_bc_short=is_bc_short
+        is_bc_short=is_bc_short,
+        is_bc_shared=is_bc_shared
     )
     multiplier_arr_ref = multiplier_arr.ref()
     pnp.add(multiplier_arr_ref)
