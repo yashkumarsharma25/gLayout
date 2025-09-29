@@ -2,17 +2,16 @@ from gdsfactory.cell import cell, clear_cache
 from gdsfactory.component import Component, copy
 from gdsfactory.component_reference import ComponentReference
 from gdsfactory.components.rectangle import rectangle
-from glayout.flow.pdk.mappedpdk import MappedPDK
+from glayout import MappedPDK, sky130,gf180
+from glayout.routing import c_route,L_route,straight_route
 from typing import Optional, Union
-from glayout.flow.blocks.elementary.diff_pair import diff_pair
-from glayout.flow.primitives.fet import nmos, pmos, multiplier
-from glayout.flow.primitives.guardring import tapring
-from glayout.flow.primitives.mimcap import mimcap_array, mimcap
-from glayout.flow.primitives.via_gen import via_stack, via_array
-from glayout.flow.routing.L_route import L_route
-from glayout.flow.routing.c_route_old import c_route
+from glayout.blocks.elementary.diff_pair import diff_pair
+from glayout.primitives.fet import nmos, pmos, multiplier
+from glayout.primitives.guardring import tapring
+from glayout.primitives.mimcap import mimcap_array, mimcap
+from glayout.primitives.via_gen import via_stack, via_array
 from gdsfactory.routing.route_quad import route_quad
-from glayout.flow.pdk.util.comp_utils import (
+from glayout.util.comp_utils import (
     evaluate_bbox,
     prec_ref_center,
     movex,
@@ -23,7 +22,7 @@ from glayout.flow.pdk.util.comp_utils import (
     align_comp_to_port,
     get_padding_points_cc,
 )
-from glayout.flow.pdk.util.port_utils import (
+from glayout.util.port_utils import (
     rename_ports_by_orientation,
     rename_ports_by_list,
     add_ports_perimeter,
@@ -31,12 +30,11 @@ from glayout.flow.pdk.util.port_utils import (
     set_port_orientation,
     rename_component_ports,
 )
-from glayout.flow.routing.straight_route import straight_route
-from glayout.flow.pdk.util.snap_to_grid import component_snap_to_grid
+from glayout.util.snap_to_grid import component_snap_to_grid
 from pydantic import validate_arguments
-from glayout.flow.placement.two_transistor_interdigitized import two_nfet_interdigitized
-from glayout.flow.spice import Netlist
-from glayout.flow.blocks.elementary.current_mirror import current_mirror_netlist
+from glayout.placement.two_transistor_interdigitized import two_nfet_interdigitized
+from glayout.spice import Netlist
+from glayout.blocks.elementary.current_mirror import current_mirror_netlist
 
 def diff_pair_ibias_netlist(center_diffpair: Component, current_mirror: Component, antenna_diode: Optional[Component] = None) -> Netlist:
     netlist = Netlist(

@@ -12,7 +12,7 @@ from glayout.primitives.guardring import tapring
 from glayout.util.port_utils import add_ports_perimeter
 from glayout.primitives.via_gen import via_stack
 from gdsfactory.components import text_freetype, rectangle
-# from evaluator_wrapper import run_evaluation # This is broken, need to be fixed
+from glayout.blocks.elementary.FVF.evaluator_wrapper import run_evaluation # This is broken, need to be fixed
 
 def fvf_netlist(fet_1: Component, fet_2: Component) -> Netlist:
 

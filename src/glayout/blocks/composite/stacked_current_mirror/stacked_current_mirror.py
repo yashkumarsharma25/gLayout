@@ -1,8 +1,8 @@
+from glayout import MappedPDK, sky130,gf180
 from gdsfactory.cell import cell, clear_cache
 from gdsfactory.component import Component, copy
 from gdsfactory.component_reference import ComponentReference
 from gdsfactory.components.rectangle import rectangle
-from glayout.pdk.mappedpdk import MappedPDK
 from typing import Optional, Union
 from glayout.primitives.fet import nmos, pmos, multiplier
 from glayout.blocks.elementary.diff_pair import diff_pair
@@ -53,3 +53,14 @@ def stacked_nfet_current_mirror(pdk: MappedPDK, half_common_source_nbias: tuple[
     cmirrorout_ref = prec_ref_center(cmirror_output)
     return cmirrorref_ref, cmirrorout_ref
 
+# Create and evaluate a current mirror instance
+if __name__ == "__main__":
+    cm = stacked_nfet_current_mirror(
+        pdk=sky130,
+        half_common_source_nbias=(0.5, 0.15, 4, 4),
+        rmult=2,
+        sd_route_left=True
+    )
+    print(cm)
+    cm.show()
+    cm_gds = cm.write_gds("stacked_nfet_current_mirror.gds")

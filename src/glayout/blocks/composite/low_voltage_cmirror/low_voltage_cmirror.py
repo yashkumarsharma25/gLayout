@@ -1,30 +1,17 @@
 from glayout import MappedPDK, sky130,gf180
 from glayout import nmos, pmos, tapring,via_stack
-
 from glayout.spice.netlist import Netlist
 from glayout.routing import c_route,L_route,straight_route
-
 from gdsfactory.component import Component
 from gdsfactory.component_reference import ComponentReference
 from gdsfactory.cell import cell
 from gdsfactory import Component
 from gdsfactory.components import text_freetype, rectangle
-
-
-
 from glayout.util.comp_utils import evaluate_bbox, prec_center, align_comp_to_port, prec_ref_center
 from glayout.util.snap_to_grid import component_snap_to_grid
 from glayout.util.port_utils import rename_ports_by_orientation
 from glayout.util.port_utils import add_ports_perimeter
-
-########################### relative import of FVF ###########################
-import os
-import sys
-script_dir = os.path.abspath(os.path.dirname(__file__))
-fvf_path = os.path.join(script_dir, "../../elementary/FVF")
-sys.path.append(fvf_path)
-from fvf import fvf_netlist, flipped_voltage_follower
-###############################################################################
+from glayout.blocks.elementary.FVF import fvf_netlist, flipped_voltage_follower
 
 from glayout.primitives.via_gen import via_stack
 from typing import Optional

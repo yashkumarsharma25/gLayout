@@ -1,4 +1,6 @@
 from gdsfactory.cell import cell, clear_cache
+from glayout import MappedPDK, sky130,gf180
+from glayout.routing import c_route,L_route,straight_route
 from gdsfactory.component import Component, copy
 from gdsfactory.component_reference import ComponentReference
 from gdsfactory.components.rectangle import rectangle
@@ -8,14 +10,11 @@ from glayout.blocks.elementary.diff_pair.diff_pair import diff_pair
 from glayout.primitives.fet import nmos, pmos, multiplier
 from glayout.primitives.guardring import tapring
 from glayout.primitives.mimcap import mimcap_array, mimcap
-from glayout.routing.L_route import L_route
-from glayout.routing.c_route_old import c_route
 from glayout.primitives.via_gen import via_stack, via_array
 from gdsfactory.routing.route_quad import route_quad
-from glayout.pdk.util.comp_utils import evaluate_bbox, prec_ref_center, movex, movey, to_decimal, to_float, move, align_comp_to_port, get_padding_points_cc
-from glayout.pdk.util.port_utils import rename_ports_by_orientation, rename_ports_by_list, add_ports_perimeter, print_ports, set_port_orientation, rename_component_ports
-from glayout.routing.straight_route import straight_route
-from glayout.pdk.util.snap_to_grid import component_snap_to_grid
+from glayout.util.comp_utils import evaluate_bbox, prec_ref_center, movex, movey, to_decimal, to_float, move, align_comp_to_port, get_padding_points_cc
+from glayout.util.port_utils import rename_ports_by_orientation, rename_ports_by_list, add_ports_perimeter, print_ports, set_port_orientation, rename_component_ports
+from glayout.util.snap_to_grid import component_snap_to_grid
 from pydantic import validate_arguments
 from glayout.placement.two_transistor_interdigitized import two_nfet_interdigitized
 from glayout.spice import Netlist
@@ -178,14 +177,13 @@ def differential_to_single_ended_converter(pdk: MappedPDK, rmult: int, half_ploa
 
 # Create and evaluate a dse instance
 if __name__ == "__main__":
-    from glayout.pdk.sky130_mapped import sky130_mapped_pdk
     dse = differential_to_single_ended_converter(
-        pdk=sky130_mapped_pdk, 
+        pdk=sky130, 
         rmult=4, 
         half_pload=(0.5, 0.18, 4), 
         via_xlocation=10
     )
     dse.show()
-    dse = component_snap_to_grid(dse, grid=pdk.grid)
+    dse = component_snap_to_grid(dse)
     dse_gds = dse.write_gds("dse.gds")
     
