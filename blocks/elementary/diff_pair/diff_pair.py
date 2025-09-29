@@ -1,6 +1,5 @@
+from typing import Optional, Union
 from glayout import MappedPDK, sky130,gf180
-from glayout import nmos, pmos, tapring,via_stack
-
 from glayout.spice.netlist import Netlist
 from glayout.routing import c_route,L_route,straight_route
 
@@ -9,7 +8,7 @@ from gdsfactory.component import Component, copy
 from gdsfactory.components.rectangle import rectangle
 from gdsfactory.routing.route_quad import route_quad
 from gdsfactory.routing.route_sharp import route_sharp
-
+from glayout.pdk.mappedpdk import MappedPDK
 from glayout.util.comp_utils import align_comp_to_port, evaluate_bbox, movex, movey
 from glayout.util.port_utils import (
     add_ports_perimeter,
@@ -21,48 +20,60 @@ from glayout.util.port_utils import (
 )
 from glayout.util.snap_to_grid import component_snap_to_grid
 from glayout.placement.common_centroid_ab_ba import common_centroid_ab_ba
-
+from glayout.primitives.fet import nmos, pmos
+from glayout.primitives.guardring import tapring
+from glayout.primitives.via_gen import via_stack
+from glayout.routing.smart_route import smart_route
+from glayout.spice import Netlist
+from glayout.pdk.sky130_mapped import sky130_mapped_pdk
 from gdsfactory.components import text_freetype
-from typing import Optional, Union
-import time
+try:
+    from evaluator_wrapper import run_evaluation
+except ImportError:
+    print("Warning: evaluator_wrapper not found. Evaluation will be skipped.")
+    run_evaluation = None
 
-def add_df_labels(df_in: Component,
-                        pdk: MappedPDK
-                         ) -> Component:
+
+def sky130_add_df_labels(df_in: Component) -> Component:
 	
     df_in.unlock()
     
+    # define layers`
+    met1_pin = (68,16)
+    met1_label = (68,5)
+    li1_pin = (67,16)
+    li1_label = (67,5)
     # list that will contain all port/comp info
     move_info = list()
     # create labels and append to info list
     # vtail
-    vtaillabel = rectangle(layer=pdk.get_glayer("met2_pin"),size=(0.27,0.27),centered=True).copy()
-    vtaillabel.add_label(text="VTAIL",layer=pdk.get_glayer("met2_label"))
+    vtaillabel = rectangle(layer=met1_pin,size=(0.27,0.27),centered=True).copy()
+    vtaillabel.add_label(text="VTAIL",layer=met1_label)
     move_info.append((vtaillabel,df_in.ports["bl_multiplier_0_source_S"],None))
     
     # vdd1
-    vdd1label = rectangle(layer=pdk.get_glayer("met2_pin"),size=(0.27,0.27),centered=True).copy()
-    vdd1label.add_label(text="VDD1",layer=pdk.get_glayer("met2_label"))
+    vdd1label = rectangle(layer=met1_pin,size=(0.27,0.27),centered=True).copy()
+    vdd1label.add_label(text="VDD1",layer=met1_label)
     move_info.append((vdd1label,df_in.ports["tl_multiplier_0_drain_N"],None))
     
     # vdd2
-    vdd2label = rectangle(layer=pdk.get_glayer("met2_pin"),size=(0.27,0.27),centered=True).copy()
-    vdd2label.add_label(text="VDD2",layer=pdk.get_glayer("met2_label"))
+    vdd2label = rectangle(layer=met1_pin,size=(0.27,0.27),centered=True).copy()
+    vdd2label.add_label(text="VDD2",layer=met1_label)
     move_info.append((vdd2label,df_in.ports["tr_multiplier_0_drain_N"],None))
     
     # VB
-    vblabel = rectangle(layer=pdk.get_glayer("met1_pin"),size=(0.5,0.5),centered=True).copy()
-    vblabel.add_label(text="B",layer=pdk.get_glayer("met1_label"))
+    vblabel = rectangle(layer=li1_pin,size=(0.5,0.5),centered=True).copy()
+    vblabel.add_label(text="B",layer=li1_label)
     move_info.append((vblabel,df_in.ports["tap_N_top_met_S"], None))
     
     # VP
-    vplabel = rectangle(layer=pdk.get_glayer("met2_pin"),size=(0.27,0.27),centered=True).copy()
-    vplabel.add_label(text="VP",layer=pdk.get_glayer("met2_label"))
+    vplabel = rectangle(layer=met1_pin,size=(0.27,0.27),centered=True).copy()
+    vplabel.add_label(text="VP",layer=met1_label)
     move_info.append((vplabel,df_in.ports["br_multiplier_0_gate_S"], None))
     
     # VN
-    vnlabel = rectangle(layer=pdk.get_glayer("met2_pin"),size=(0.27,0.27),centered=True).copy()
-    vnlabel.add_label(text="VN",layer=pdk.get_glayer("met2_label"))
+    vnlabel = rectangle(layer=met1_pin,size=(0.27,0.27),centered=True).copy()
+    vnlabel.add_label(text="VN",layer=met1_label)
     move_info.append((vnlabel,df_in.ports["bl_multiplier_0_gate_S"], None))
 
     # move everything to position
@@ -74,15 +85,129 @@ def add_df_labels(df_in: Component,
 
 def diff_pair_netlist(fetL: Component, fetR: Component) -> Netlist:
 	diff_pair_netlist = Netlist(circuit_name='DIFF_PAIR', nodes=['VP', 'VN', 'VDD1', 'VDD2', 'VTAIL', 'B'])
+	
+	# Handle fetL netlist - reconstruct if it's a string
+	fetL_netlist = fetL.info['netlist']
+	if isinstance(fetL_netlist, str):
+		if 'netlist_data' in fetL.info:
+			data = fetL.info['netlist_data']
+			fetL_netlist = Netlist(circuit_name=data['circuit_name'], nodes=data['nodes'])
+			fetL_netlist.source_netlist = data['source_netlist']
+			if 'parameters' in data:
+				fetL_netlist.parameters = data['parameters']
+		else:
+			raise ValueError("No netlist_data found for string netlist in fetL component.info")
+	
+	# Handle fetR netlist - reconstruct if it's a string
+	fetR_netlist = fetR.info['netlist']
+	if isinstance(fetR_netlist, str):
+		if 'netlist_data' in fetR.info:
+			data = fetR.info['netlist_data']
+			fetR_netlist = Netlist(circuit_name=data['circuit_name'], nodes=data['nodes'])
+			fetR_netlist.source_netlist = data['source_netlist']
+			if 'parameters' in data:
+				fetR_netlist.parameters = data['parameters']
+		else:
+			raise ValueError("No netlist_data found for string netlist in fetR component.info")
+	
 	diff_pair_netlist.connect_netlist(
-		fetL.info['netlist'],
+		fetL_netlist,
 		[('D', 'VDD1'), ('G', 'VP'), ('S', 'VTAIL'), ('B', 'B')]
 	)
 	diff_pair_netlist.connect_netlist(
-		fetR.info['netlist'],
+		fetR_netlist,
 		[('D', 'VDD2'), ('G', 'VN'), ('S', 'VTAIL'), ('B', 'B')]
 	)
 	return diff_pair_netlist
+
+def sky130_add_diff_pair_labels(diff_pair_in: Component) -> Component:
+    """
+    Add labels to differential pair component for simulation and testing
+    """
+    diff_pair_in.unlock()
+    # define layers
+    met1_pin = (68,16)
+    met1_label = (68,5)
+    met2_pin = (69,16)
+    met2_label = (69,5)
+    # list that will contain all port/comp info
+    move_info = list()
+    
+    # Positive input (VP)
+    vp_label = rectangle(layer=met1_pin, size=(0.5,0.5), centered=True).copy()
+    vp_label.add_label(text="VP", layer=met1_label)
+    
+    # Negative input (VN)
+    vn_label = rectangle(layer=met1_pin, size=(0.5,0.5), centered=True).copy()
+    vn_label.add_label(text="VN", layer=met1_label)
+    
+    # Positive output drain (VDD1)
+    vdd1_label = rectangle(layer=met2_pin, size=(0.5,0.5), centered=True).copy()
+    vdd1_label.add_label(text="VDD1", layer=met2_label)
+    
+    # Negative output drain (VDD2)
+    vdd2_label = rectangle(layer=met2_pin, size=(0.5,0.5), centered=True).copy()
+    vdd2_label.add_label(text="VDD2", layer=met2_label)
+    
+    # Tail current (VTAIL)
+    vtail_label = rectangle(layer=met1_pin, size=(0.5,0.5), centered=True).copy()
+    vtail_label.add_label(text="VTAIL", layer=met1_label)
+    
+    # Bulk/Body (B)
+    b_label = rectangle(layer=met1_pin, size=(0.5,0.5), centered=True).copy()
+    b_label.add_label(text="B", layer=met1_label)
+    
+    # Try to find appropriate ports and add labels
+    try:
+        # Look for gate ports for VP and VN
+        plus_gate_ports = [p for p in diff_pair_in.ports.keys() if 'PLUSgate' in p and 'met' in p]
+        minus_gate_ports = [p for p in diff_pair_in.ports.keys() if 'MINUSgate' in p and 'met' in p]
+        
+        # Look for drain ports for VDD1 and VDD2
+        drain_ports = [p for p in diff_pair_in.ports.keys() if 'drain_route' in p and 'met' in p]
+        
+        # Look for source ports for VTAIL
+        source_ports = [p for p in diff_pair_in.ports.keys() if 'source_route' in p and 'met' in p]
+        
+        # Look for bulk/tie ports
+        bulk_ports = [p for p in diff_pair_in.ports.keys() if ('tie' in p or 'well' in p or 'tap' in p) and 'met' in p]
+        
+        if plus_gate_ports:
+            move_info.append((vp_label, diff_pair_in.ports[plus_gate_ports[0]], None))
+        if minus_gate_ports:
+            move_info.append((vn_label, diff_pair_in.ports[minus_gate_ports[0]], None))
+        if len(drain_ports) >= 2:
+            move_info.append((vdd1_label, diff_pair_in.ports[drain_ports[0]], None))
+            move_info.append((vdd2_label, diff_pair_in.ports[drain_ports[1]], None))
+        elif len(drain_ports) == 1:
+            move_info.append((vdd1_label, diff_pair_in.ports[drain_ports[0]], None))
+        if source_ports:
+            move_info.append((vtail_label, diff_pair_in.ports[source_ports[0]], None))
+        if bulk_ports:
+            move_info.append((b_label, diff_pair_in.ports[bulk_ports[0]], None))
+            
+    except (KeyError, IndexError):
+        # Fallback - just add labels at component center
+        print("Warning: Could not find specific ports for labels, using fallback positioning")
+        move_info = [
+            (vp_label, None, None),
+            (vn_label, None, None), 
+            (vdd1_label, None, None),
+            (vdd2_label, None, None),
+            (vtail_label, None, None),
+            (b_label, None, None)
+        ]
+    
+    # move everything to position
+    for comp, prt, alignment in move_info:
+        alignment = ('c','b') if alignment is None else alignment
+        if prt is not None:
+            compref = align_comp_to_port(comp, prt, alignment=alignment)
+        else:
+            compref = comp
+        diff_pair_in.add(compref)
+    
+    return diff_pair_in.flatten()
 
 @cell
 def diff_pair(
@@ -90,7 +215,7 @@ def diff_pair(
 	width: float = 3,
 	fingers: int = 4,
 	length: Optional[float] = None,
-	device: str = 'nfet',
+	n_or_p_fet: bool = True,
 	plus_minus_seperation: float = 0,
 	rmult: int = 1,
 	dummy: Union[bool, tuple[bool, bool]] = True,
@@ -106,24 +231,21 @@ def diff_pair(
 	"""
 	# TODO: error checking
 	pdk.activate()
-	diffpair = Component("diffpair")
+	diffpair = Component()
 	# create transistors
 	well = None
 	if isinstance(dummy, bool):
 		dummy = (dummy, dummy)
-	if device.lower() in ['nmos', 'nfet']:
+	if n_or_p_fet:
 		fetL = nmos(pdk, width=width, fingers=fingers,length=length,multipliers=1,with_tie=False,with_dummy=(dummy[0], False),with_dnwell=False,with_substrate_tap=False,rmult=rmult)
 		fetR = nmos(pdk, width=width, fingers=fingers,length=length,multipliers=1,with_tie=False,with_dummy=(False,dummy[1]),with_dnwell=False,with_substrate_tap=False,rmult=rmult)
 		min_spacing_x = pdk.get_grule("n+s/d")["min_separation"] - 2*(fetL.xmax - fetL.ports["multiplier_0_plusdoped_E"].center[0])
 		well = "pwell"
-	elif device.lower() in ['pmos', 'pfet']:
+	else:
 		fetL = pmos(pdk, width=width, fingers=fingers,length=length,multipliers=1,with_tie=False,with_dummy=(dummy[0], False),dnwell=False,with_substrate_tap=False,rmult=rmult)
 		fetR = pmos(pdk, width=width, fingers=fingers,length=length,multipliers=1,with_tie=False,with_dummy=(False,dummy[1]),dnwell=False,with_substrate_tap=False,rmult=rmult)
 		min_spacing_x = pdk.get_grule("p+s/d")["min_separation"] - 2*(fetL.xmax - fetL.ports["multiplier_0_plusdoped_E"].center[0])
 		well = "nwell"
-	else:
-		raise ValueError(f"device must be either 'nmos' or 'pmos', got {device}")
-
 	# place transistors
 	viam2m3 = via_stack(pdk,"met2","met3",centered=True)
 	metal_min_dim = max(pdk.get_grule("met2")["min_width"],pdk.get_grule("met3")["min_width"])
@@ -135,9 +257,11 @@ def diff_pair(
 	a_topl = (diffpair << fetL).movey(fetL.ymax+min_spacing_y/2+0.5).movex(0-fetL.xmax-min_spacing_x/2)
 	b_topr = (diffpair << fetR).movey(fetR.ymax+min_spacing_y/2+0.5).movex(fetL.xmax+min_spacing_x/2)
 	a_botr = (diffpair << fetR)
-	a_botr.mirror_y().movey(0-0.5-fetL.ymax-min_spacing_y/2).movex(fetL.xmax+min_spacing_x/2)
+	a_botr.mirror_y()
+	a_botr.movey(0-0.5-fetL.ymax-min_spacing_y/2).movex(fetL.xmax+min_spacing_x/2)
 	b_botl = (diffpair << fetL)
-	b_botl.mirror_y().movey(0-0.5-fetR.ymax-min_spacing_y/2).movex(0-fetL.xmax-min_spacing_x/2)
+	b_botl.mirror_y()
+	b_botl.movey(0-0.5-fetR.ymax-min_spacing_y/2).movex(0-fetL.xmax-min_spacing_x/2)
 	# if substrate tap place substrate tap
 	if substrate_tap:
 		tapref = diffpair << tapring(pdk,evaluate_bbox(diffpair,padding=1),horizontal_glayer="met1")
@@ -161,11 +285,9 @@ def diff_pair(
 	# route sources (short sources)
 	diffpair << route_quad(a_topl.ports["multiplier_0_source_E"], b_topr.ports["multiplier_0_source_W"], layer=pdk.get_glayer("met2"))
 	diffpair << route_quad(b_botl.ports["multiplier_0_source_E"], a_botr.ports["multiplier_0_source_W"], layer=pdk.get_glayer("met2"))
- 
- 
 	sextension = b_topr.ports["well_E"].center[0] - b_topr.ports["multiplier_0_source_E"].center[0]
-	source_routeE = diffpair << c_route(pdk, b_topr.ports["multiplier_0_source_E"], a_botr.ports["multiplier_0_source_E"],extension=sextension, viaoffset=False)
-	source_routeW = diffpair << c_route(pdk, a_topl.ports["multiplier_0_source_W"], b_botl.ports["multiplier_0_source_W"],extension=sextension, viaoffset=False)
+	source_routeE = diffpair << c_route(pdk, b_topr.ports["multiplier_0_source_E"], a_botr.ports["multiplier_0_source_E"],extension=sextension)
+	source_routeW = diffpair << c_route(pdk, a_topl.ports["multiplier_0_source_W"], b_botl.ports["multiplier_0_source_W"],extension=sextension)
 	# route drains
 	# place via at the drain
 	drain_br_via = diffpair << viam2m3
@@ -201,7 +323,6 @@ def diff_pair(
 	# lay MINUSgate_routeW and PLUSgate_routeE
 	MINUSgate_routeW = diffpair << c_route(pdk, set_port_orientation(b_botl.ports["multiplier_0_gate_E"],"W"), bar_minus.ports["e1"], extension=get_left_extension(bar_minus))
 	PLUSgate_routeE = diffpair << c_route(pdk, set_port_orientation(a_botr.ports["multiplier_0_gate_W"],"E"), bar_plus.ports["e3"], extension=get_right_extension(bar_plus))
- 
 	# correct pwell place, add ports, flatten, and return
 	diffpair.add_ports(a_topl.get_ports_list(),prefix="tl_")
 	diffpair.add_ports(b_topr.get_ports_list(),prefix="tr_")
@@ -222,6 +343,8 @@ def diff_pair(
 	component.info['netlist'] = diff_pair_netlist(fetL, fetR)
 	return component
 
+
+
 @cell
 def diff_pair_generic(
 	pdk: MappedPDK,
@@ -238,19 +361,50 @@ def diff_pair_generic(
 	diffpair << smart_route(pdk,diffpair.ports["A_source_E"],diffpair.ports["B_source_E"],diffpair, diffpair)
 	return diffpair
 
+
+# Create and evaluate a differential pair instance
 if __name__ == "__main__":
-    comp =diff_pair(sky130)
-    # comp.pprint_ports()
-    comp =add_df_labels(comp,sky130)
-    comp.name = "DiffPair"
-    comp.show()
-    #print(comp.info['netlist'].generate_netlist())
-    print("...Running DRC...")
-    drc_result = sky130.drc_magic(comp, "DiffPair")
-    ## Klayout DRC
-    #drc_result = sky130.drc(comp)\n
-    time.sleep(5)
-    print("...Running LVS...")
-    lvs_res=sky130.lvs_netgen(comp, "DiffPair")
-    #print("...Saving GDS...")
-    #comp.write_gds('out_Diffpair.gds')
+	# this is the old eval code
+
+    # Create differential pair with labels
+	comp =diff_pair(sky130)
+	# comp.pprint_ports()
+	comp=sky130_add_df_labels(comp)
+	comp.name = "DiffPair"
+	comp.show()
+	#print(comp.info['netlist'].generate_netlist())
+	print("...Running DRC...")
+	drc_result = sky130.drc_magic(comp, "DiffPair")
+	## Klayout DRC
+	#drc_result = sky130.drc(comp)\n
+	time.sleep(5)
+	print("...Running LVS...")
+	lvs_res=sky130.lvs_netgen(comp, "DiffPair")
+	#print("...Saving GDS...")
+	#comp.write_gds('out_Diffpair.gds')
+
+	# This is the new eval code
+	dp = sky130_add_diff_pair_labels(
+		diff_pair(
+			pdk=sky130, 
+			width=3, 
+			fingers=4, 
+			length=None,
+			n_or_p_fet=True,
+			plus_minus_seperation=0,
+			rmult=1,
+			dummy=True,
+			substrate_tap=True
+		)
+	)
+	# Show the layout
+	dp.show()
+	dp.name = "diff_pair"
+	# Write GDS file
+	dp_gds = dp.write_gds("diff_pair.gds")
+	# Run evaluation if available
+	if run_evaluation is not None:
+		result = run_evaluation("diff_pair.gds", dp.name, dp)
+		print(result)
+	else:
+		print("Evaluation skipped - evaluator_wrapper not available")

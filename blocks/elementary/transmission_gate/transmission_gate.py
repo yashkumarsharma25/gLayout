@@ -1,20 +1,24 @@
 from glayout import MappedPDK, sky130,gf180
-from glayout import nmos, pmos, tapring,via_stack
-
-
 from gdsfactory.cell import cell
 from gdsfactory.component import Component
-
-from glayout.spice.netlist import Netlist
-from glayout.routing import c_route,L_route,straight_route
-
+from gdsfactory import Component
+from glayout.primitives.fet import nmos, pmos, multiplier
 from glayout.util.comp_utils import evaluate_bbox, prec_center, align_comp_to_port, movex, movey
 from glayout.util.snap_to_grid import component_snap_to_grid
 from glayout.util.port_utils import rename_ports_by_orientation
+from glayout.routing.straight_route import straight_route
+from glayout.routing.c_route import c_route
+from glayout.routing.L_route import L_route
+from glayout.primitives.guardring import tapring
 from glayout.util.port_utils import add_ports_perimeter
+from glayout.spice.netlist import Netlist
+from glayout.primitives.via_gen import via_stack
 from gdsfactory.components import text_freetype, rectangle
-from typing import Optional, Union 
-import time
+try:
+    from evaluator_wrapper import run_evaluation
+except ImportError:
+    print("Warning: evaluator_wrapper not found. Evaluation will be skipped.")
+    run_evaluation = None
 
 def add_tg_labels(tg_in: Component,
                         pdk: MappedPDK
@@ -63,11 +67,85 @@ def add_tg_labels(tg_in: Component,
     return tg_in.flatten() 
 
 
+def get_component_netlist(component):
+    """Helper function to get netlist object from component info, compatible with all gdsfactory versions"""
+    from glayout.spice.netlist import Netlist
+    
+    # Try to get stored object first (for older gdsfactory versions)
+    if 'netlist_obj' in component.info:
+        return component.info['netlist_obj']
+    
+    # Try to reconstruct from netlist_data (for newer gdsfactory versions)
+    if 'netlist_data' in component.info:
+        data = component.info['netlist_data']
+        netlist = Netlist(
+            circuit_name=data['circuit_name'],
+            nodes=data['nodes']
+        )
+        netlist.source_netlist = data['source_netlist']
+        return netlist
+    
+    # Fallback: return the string representation (should not happen in normal operation)
+    return component.info.get('netlist', '')
+
+def sky130_add_tg_labels(tg_in: Component) -> Component:
+	
+    tg_in.unlock()
+    
+    # define layers`
+    met1_pin = (68,16)
+    met1_label = (68,5)
+    li1_pin = (67,16)
+    li1_label = (67,5)
+    # list that will contain all port/comp info
+    move_info = list()
+    # create labels and append to info list
+    # vin
+    vinlabel = rectangle(layer=met1_pin,size=(0.27,0.27),centered=True).copy()
+    vinlabel.add_label(text="VIN",layer=met1_label)
+    move_info.append((vinlabel,tg_in.ports["N_multiplier_0_source_E"],None))
+    
+    # vout
+    voutlabel = rectangle(layer=met1_pin,size=(0.27,0.27),centered=True).copy()
+    voutlabel.add_label(text="VOUT",layer=met1_label)
+    move_info.append((voutlabel,tg_in.ports["P_multiplier_0_drain_W"],None))
+    
+    # vcc
+    vcclabel = rectangle(layer=met1_pin,size=(0.5,0.5),centered=True).copy()
+    vcclabel.add_label(text="VCC",layer=met1_label)
+    move_info.append((vcclabel,tg_in.ports["P_tie_S_top_met_S"],None))
+    
+    # vss
+    vsslabel = rectangle(layer=met1_pin,size=(0.5,0.5),centered=True).copy()
+    vsslabel.add_label(text="VSS",layer=met1_label)
+    move_info.append((vsslabel,tg_in.ports["N_tie_S_top_met_N"], None))
+    
+    # VGP
+    vgplabel = rectangle(layer=met1_pin,size=(0.27,0.27),centered=True).copy()
+    vgplabel.add_label(text="VGP",layer=met1_label)
+    move_info.append((vgplabel,tg_in.ports["P_multiplier_0_gate_E"], None))
+    
+    # VGN
+    vgnlabel = rectangle(layer=met1_pin,size=(0.27,0.27),centered=True).copy()
+    vgnlabel.add_label(text="VGN",layer=met1_label)
+    move_info.append((vgnlabel,tg_in.ports["N_multiplier_0_gate_E"], None))
+
+    # move everything to position
+    for comp, prt, alignment in move_info:
+        alignment = ('c','b') if alignment is None else alignment
+        compref = align_comp_to_port(comp, prt, alignment=alignment)
+        tg_in.add(compref)
+    return tg_in.flatten() 
+
+
 def tg_netlist(nfet: Component, pfet: Component) -> Netlist:
 
          netlist = Netlist(circuit_name='Transmission_Gate', nodes=['VIN', 'VSS', 'VOUT', 'VCC', 'VGP', 'VGN'])
-         netlist.connect_netlist(nfet.info['netlist'], [('D', 'VOUT'), ('G', 'VGN'), ('S', 'VIN'), ('B', 'VSS')])
-         netlist.connect_netlist(pfet.info['netlist'], [('D', 'VOUT'), ('G', 'VGP'), ('S', 'VIN'), ('B', 'VCC')])
+         # Use helper function to get netlist objects regardless of gdsfactory version
+         nfet_netlist = get_component_netlist(nfet)
+         pfet_netlist = get_component_netlist(pfet)
+         netlist.connect_netlist(nfet_netlist, [('D', 'VOUT'), ('G', 'VGN'), ('S', 'VIN'), ('B', 'VSS')])
+         netlist.connect_netlist(pfet_netlist, [('D', 'VOUT'), ('G', 'VGP'), ('S', 'VIN'), ('B', 'VCC')])
 
          return netlist
 
@@ -87,7 +165,7 @@ def  transmission_gate(
     tuples are in (NMOS,PMOS) order
     **kwargs are any kwarg that is supported by nmos and pmos
     """
-    pdk.activate()
+   
     #top level component
     top_level = Component(name="transmission_gate")
 
@@ -123,27 +201,45 @@ def  transmission_gate(
             top_level.add_ports(guardring_ref.get_ports_list(),prefix="tap_")
     
     component = component_snap_to_grid(rename_ports_by_orientation(top_level)) 
-    component.info['netlist'] = tg_netlist(nfet, pfet)
+    # Store netlist as string to avoid gymnasium info dict type restrictions
+    # Compatible with both gdsfactory 7.7.0 and 7.16.0+ strict Pydantic validation
+    netlist_obj = tg_netlist(nfet, pfet)
+    component.info['netlist'] = str(netlist_obj)
+    # Store serialized netlist data for reconstruction if needed
+    component.info['netlist_data'] = {
+        'circuit_name': netlist_obj.circuit_name,
+        'nodes': netlist_obj.nodes,
+        'source_netlist': netlist_obj.source_netlist
+    }
 
 
     return component
-
-
 if __name__ == "__main__":
-    comp = transmission_gate(sky130)
-    # comp.pprint_ports()
-    comp = add_tg_labels(comp,sky130)
-    comp.name = "TG"
-    comp.show()
-    #print(comp.info['netlist'].generate_netlist())
-    print("...Running DRC...")
-    drc_result = sky130.drc_magic(comp, "TG")
-    ## Klayout DRC
-    #drc_result = gf180.drc(comp)\n
+    # OLD EVAL CODE
+    # comp = transmission_gate(sky130)
+    # # comp.pprint_ports()
+    # comp = add_tg_labels(comp,sky130)
+    # comp.name = "TG"
+    # comp.show()
+    # #print(comp.info['netlist'].generate_netlist())
+    # print("...Running DRC...")
+    # drc_result = sky130.drc_magic(comp, "TG")
+    # ## Klayout DRC
+    # #drc_result = gf180.drc(comp)\n
     
-    time.sleep(5)
+    # time.sleep(5)
         
-    print("...Running LVS...")
-    lvs_res=sky130.lvs_netgen(comp, "TG")
-    #print("...Saving GDS...")
-    #comp.write_gds('out_TG.gds')
+    # print("...Running LVS...")
+    # lvs_res=sky130.lvs_netgen(comp, "TG")
+    # #print("...Saving GDS...")
+    # #comp.write_gds('out_TG.gds')
+
+    # NEW EVAL CODE
+    #transmission_gate = transmission_gate(sky130_mapped_pdk)
+    transmission_gate = add_tg_labels(transmission_gate(sky130),sky130)
+    transmission_gate.show()
+    transmission_gate.name = "Transmission_Gate"
+    #magic_drc_result = sky130_mapped_pdk.drc_magic(transmission_gate, transmission_gate.name)
+    #netgen_lvs_result = sky130_mapped_pdk.lvs_netgen(transmission_gate, transmission_gate.name)
+    transmission_gate_gds = transmission_gate.write_gds("transmission_gate.gds")
+    res = run_evaluation("transmission_gate.gds", transmission_gate.name, transmission_gate)
