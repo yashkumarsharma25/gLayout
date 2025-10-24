@@ -2,17 +2,8 @@
 usage: from mappedpdk import MappedPDK
 """
 import re
-##from gdsfactory.pdk import Pdk 
-#import gdsfactory as gf
-##from gdsfactory.typings import Component, PathType, Layer
-#from gdsfactory.pdk import Pdk
-# --- temporary stub to skip gdsfactory dependency ---
-class DummyPdk:
-    def activate(self):
-        print("[INFO] Skipping Pdk activation (gdsfactory not installed).")
-
-Pdk = DummyPdk()
-# ----------------------------------------------------
+from gdsfactory.pdk import Pdk
+from gdsfactory.typings import Component, PathType, Layer
 from pydantic import validator, StrictStr, ValidationError
 from typing import ClassVar, Optional, Any, Union, Literal, Iterable, TypedDict
 from pathlib import Path
