@@ -33,6 +33,8 @@ LAYER = {
     # BJT layers
     "drc_bjt": (127, 5),
     "lvs_bjt": (118, 5),
+    "MIM_L_MK": (117, 10),
+    "fusetop": (75, 0),
     # _Label Layer Definations
     "metal5_label": (81,10),
     "metal4_label": (46,10),
@@ -103,9 +105,9 @@ gf180_valid_bjt_sizes = {
     ],
 }
 
-# note for DRC, there is mim_option 'A'. This is the one configured for use
+# note for DRC, there is mim_option 'B'. This is the one configured for use
 
-gf180_lydrc_file_path = Path(__file__).resolve().parent / "gf180mcu_drc.lydrc"
+gf180_lydrc_file_path = Path(__file__).resolve().parent / "gf180mcu_drc_wrapper.drc"
 # openfasoc_dir = Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent
 # pdk_root = Path('/usr/bin/miniconda3/share/pdk/')
 pdk_root = Path(os.getenv('PDK_ROOT'))
@@ -131,7 +133,12 @@ gf180_mapped_pdk = MappedPDK(
 	models={
         'nfet': 'nfet_03v3',
 		'pfet': 'pfet_03v3',
-		'mimcap': 'mimcap_1p0fF'
+		# The PDK names these cap_mim_<density>fF: 1f0, 1f5 or 2f0.
+		# 'mimcap_1p0fF' does not exist -- prefix reversed, 'p' for 'f' --
+		# so the reference netlist named a model the LVS reader could not
+		# pair with the cap_mim_* it extracts, in every cell with a cap.
+		# Which density to use is a process decision, not the generator's.
+		'mimcap': 'cap_mim_2f0fF'
     },
     layers=LAYER,
     pdk_files=pdk_files,

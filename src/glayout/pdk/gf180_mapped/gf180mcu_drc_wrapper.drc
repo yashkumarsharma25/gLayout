@@ -1,0 +1,14 @@
+# Bridge MappedPDK.drc()'s '-rd in_gds=... -rd report_file=...' (klayout > 0.29
+# convention) into the variables the standalone gf180mcu.drc deck reads
+# ($input / $report). Also presets variant-A metal stack so the deck doesn't
+# bail out. We use eval(File.read(...)) instead of Ruby's load() because the
+# bundled deck uses klayout DRC DSL methods (source, polygons, report, ...)
+# that only exist in the enclosing DRC interpreter scope.
+$input  = $in_gds      if defined?($in_gds)      && $in_gds      && $input.nil?
+$report = $report_file if defined?($report_file) && $report_file && $report.nil?
+$run_mode   ||= "flat"
+$metal_top  ||= "30K"
+$metal_level||= "3LM"
+$mim_option ||= "A"
+$thr        ||= 4
+eval(File.read(File.join(File.dirname(File.expand_path(__FILE__)), "gf180mcu.drc")))

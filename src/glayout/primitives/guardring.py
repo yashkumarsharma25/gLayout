@@ -1,8 +1,5 @@
 from glayout.pdk.mappedpdk import MappedPDK
-from gdsfactory.cell import cell
-from gdsfactory.component import Component
-from gdsfactory.components.rectangle import rectangle
-from gdsfactory.components.rectangular_ring import rectangular_ring
+from glayout.backend import Component, cell, rectangle, rectangular_ring
 from glayout.primitives.via_gen import via_array, via_stack
 from typing import Optional
 from glayout.util.comp_utils import to_decimal, to_float, evaluate_bbox
@@ -71,6 +68,24 @@ def tapring(
         centered=True,
         layer=pdk.get_glayer(sdlayer),
     )
+    # For an n+ tap (pmos body tie), draw the enclosing nwell inside the
+    # tapring itself so the tap diffusion lives in nwell at the same
+    # hierarchy level. Without this, callers add nwell at a parent level
+    # via add_padding() and magic's hierarchical LVS extraction does not
+    # see the n+s/d ring as in-nwell — leaving the welltie metal on a
+    # separate node from the body. (The nfet/p+ case is fine because pwell
+    # is the implicit substrate; nwell has no such global net.)
+    if sdlayer == "n+s/d":
+        nwell_enc = pdk.get_grule("nwell", "active_tap")["min_enclosure"]
+        nwell_outer = (
+            enclosed_rectangle[0] + 2 * tap_width + 2 * nwell_enc,
+            enclosed_rectangle[1] + 2 * tap_width + 2 * nwell_enc,
+        )
+        ptapring << rectangle(
+            size=nwell_outer,
+            layer=pdk.get_glayer("nwell"),
+            centered=True,
+        )
     # create via arrs
     via_width_horizontal = evaluate_bbox(via_stack(pdk, "active_tap", horizontal_glayer))[0]
     arr_size_horizontal = enclosed_rectangle[0]

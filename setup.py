@@ -7,7 +7,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="glayout",
-    version="0.1.3",
+    version="0.2.0",
     description="A PDK-agnostic layout automation framework for analog circuit design",
     long_description=long_description,
     long_description_content_type="text/markdown", 
@@ -22,6 +22,15 @@ setup(
         "pandas>1.3.0,<=2.3.0",
         "matplotlib>3.4.0,<=3.10.0",
         "klayout>0.28.0,<=0.29",
+        # `docopt` is imported by gf180mcu's bundled `run_lvs.py` (under
+        # `$PDK_ROOT/ciel/gf180mcu/versions/<hash>/gf180mcuD/libs.tech/
+        # klayout/tech/lvs/run_lvs.py`). The gf180 LVS dispatch in
+        # `tests/lvs/klayout_gf180.py` execs that script via the active
+        # python3, so docopt must be importable from the venv that runs
+        # LVS — otherwise every gf180 LVS report contains only
+        # `ModuleNotFoundError: No module named 'docopt'` and the deck
+        # never runs.
+        "docopt",
         "prettyprint",
         "prettyprinttree",
         "gdstk",

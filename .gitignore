@@ -244,3 +244,41 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+/.drc-cache/
+.cursor/
+/.claude/
+
+# magic / netgen extract artifacts that get dropped in the cwd by lvs_netgen
+*.ext
+*.nodes
+*.res.ext
+*.lvsmag
+*.sim
+.*.*
+.*/
+# Re-include project directories that start with a dot but aren't user state
+# (workflow defs, etc.). Without these negations the `.*/` rule above hides
+# anything new under .github/ from `git status`.
+!.github/
+!.github/**
+_*.json
+out/
+drc_results/
+notebook_results/
+
+# tutorial-time generated artifacts: helper modules written by part 1 of
+# FVF/INV, scratch GDS/SVGs used for inline display, klayout DRC reports,
+# magic extraction directories. None of these should be committed.
+tutorial/FVF/
+tutorial/INV/
+tutorial/ext/
+tutorial/klayout_drc/
+tutorial/out/
+tutorial/BJT_tutorials/ext/
+tutorial/BJT_tutorials/out/
+tutorial/*.gds
+tutorial/*.svg
+tutorial/*.lyrdb
+tutorial/fvf.gds
+tutorial/out.gds
+tutorial/out.svg

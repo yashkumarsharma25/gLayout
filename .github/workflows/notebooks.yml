@@ -1,0 +1,152 @@
+name: Tutorial Notebooks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same branch — pushing N commits in a row
+# shouldn't keep N CI runs going.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  notebooks:
+    name: Run tutorial notebooks
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    # Same container + Python setup as drc.yml, so the two workflows can
+    # share a venv cache. iic-osic-tools ships klayout, magic, netgen, both
+    # PDKs (under /foss/pdks), but Python 3.12 + gdsfactory 9.x — we install
+    # CPython 3.10 via uv and let glayout's pinned gdsfactory 7.7 / numpy 1.x
+    # come along.
+    container:
+      image: hpretl/iic-osic-tools:latest
+      options: --user root
+      env:
+        # Both sky130A and gf180mcuD live here; glayout's gf180 module reads
+        # this at import time even when a notebook only touches sky130, so
+        # it has to be set globally.
+        # The tutorials build several times faster on the native backend,
+        # which takes the heaviest notebooks off the 180s per-cell limit
+        # rather than raising it. Measured on the fork's own CI:
+        # GLayout_Cells 187.8s (timeout) -> 14.2s, whole suite 660s -> 158s.
+        GLAYOUT_BACKEND: gdstk
+        PDK_ROOT: /foss/pdks
+        # FVF / INV / BJT tutorials default to gf180; the bootstrap cell in
+        # each notebook derives PDKPATH from PDK_ROOT/PDK if unset.
+        PDK: gf180mcuD
+        PDKPATH: /foss/pdks/gf180mcuD
+        DEBIAN_FRONTEND: noninteractive
+        PYTHONUNBUFFERED: "1"
+        # The image sets PYTHONPATH to its 3.12 site-packages, which would
+        # leak gdsfactory 9.x into the 3.10 kernel.
+        PYTHONPATH: ""
+        # GitHub Actions overrides the image's ENTRYPOINT with `tail -f`,
+        # so the iic-osic-tools entrypoint that normally enriches PATH with
+        # /foss/tools/{bin,klayout,...} never runs.
+        PATH: /foss/tools/bin:/foss/tools/sak:/foss/tools/kactus2:/foss/tools/klayout:/foss/tools/osic-multitool:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+    # iic-osic-tools' default container shell is dash, which doesn't grok
+    # the bash features uv's installer and our notebooks rely on.
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that notebook outputs are cleared
+        # Fail fast (sub-second, stdlib-only) before the multi-minute
+        # nbconvert pass. Catches PRs that ship notebooks with stale outputs
+        # — those bloat the diff and defeat the cleared-outputs convention
+        # the repo settled on in PR #89.
+        run: python3 tests/notebooks/check_outputs_cleared.py
+
+      - name: Cache uv + CPython 3.10
+        id: cache-uv
+        uses: actions/cache@v4
+        with:
+          # HOME=/headless in the image even when running as root.
+          path: |
+            /headless/.local/bin/uv
+            /headless/.local/bin/uvx
+            /headless/.local/share/uv
+          key: uv-py310-${{ runner.os }}-v1
+
+      - name: Install Python 3.10 (uv)
+        run: |
+          set -euxo pipefail
+          if [ ! -x "$HOME/.local/bin/uv" ]; then
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+          fi
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          uv python install 3.10
+          echo "PYTHON310=$(uv python find 3.10)" >> "$GITHUB_ENV"
+
+      - name: Show tool versions
+        run: |
+          set -euxo pipefail
+          klayout -v
+          magic -d null -noconsole -T minimum </dev/null 2>&1 | head -5 || true
+          netgen -batch lvs -version 2>&1 | head -3 || true
+          ngspice -v 2>&1 | head -3 || true
+          "$PYTHON310" --version
+          ls "$PDK_ROOT"
+
+      - name: Cache python venv
+        id: cache-venv
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.venv
+          # Bust the cache on dependency-relevant changes. notebooks adds
+          # jupyter/nbconvert/ipykernel/ipywidgets/gdstk/svgutils on top of
+          # the DRC venv, so a separate cache key avoids touching the
+          # drc-venv cache.
+          key: notebooks-venv-py310-${{ runner.os }}-${{ hashFiles('setup.py', 'src/glayout/**/*.py') }}-v1
+          restore-keys: |
+            notebooks-venv-py310-${{ runner.os }}-
+
+      - name: Create venv and install glayout + jupyter (cache miss)
+        if: steps.cache-venv.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          rm -rf "$GITHUB_WORKSPACE/.venv"
+          "$PYTHON310" -m venv "$GITHUB_WORKSPACE/.venv"
+          . "$GITHUB_WORKSPACE/.venv/bin/activate"
+          # uv pip install is ~3-5x faster than pip and auto-detects
+          # $VIRTUAL_ENV after `activate`. glayout's install_requires already
+          # pulls in gdstk / svgutils / ipywidgets; jupyter+nbconvert+
+          # ipykernel are the only extras the notebook harness needs.
+          uv pip install -e .
+          uv pip install jupyter nbconvert ipykernel
+
+      - name: Run all tutorial notebooks
+        run: |
+          set -euxo pipefail
+          . "$GITHUB_WORKSPACE/.venv/bin/activate"
+          python tests/notebooks/run_tutorial_notebooks.py \
+            --out-dir notebook_results
+
+      - name: Upload notebook artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tutorial-notebooks
+          # Includes executed/*.ipynb, logs/*.log, summary.json, junit.xml —
+          # everything needed to triage a regression without rerunning CI.
+          path: notebook_results
+          retention-days: 14
+
+      - name: Publish JUnit summary
+        # Skip when junit.xml wasn't produced (the runner died before write).
+        if: ${{ always() && hashFiles('notebook_results/junit.xml') != '' }}
+        uses: mikepenz/action-junit-report@v4
+        with:
+          report_paths: notebook_results/junit.xml
+          check_name: Tutorial notebooks
+          require_tests: true

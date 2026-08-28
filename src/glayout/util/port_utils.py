@@ -1,13 +1,25 @@
 from pydantic import validate_arguments
-from gdsfactory.typings import Component, ComponentReference
-from gdsfactory.components.rectangle import rectangle
-from gdsfactory.port import Port
+from glayout.backend import Component, ComponentReference, Port, rectangle
 from typing import Callable, Union, Optional
 from decimal import Decimal
 from pathlib import Path
 import pickle
-from PrettyPrint import PrettyPrintTree
 import math
+
+try:
+	from PrettyPrint import PrettyPrintTree
+except ImportError:
+	try:
+		from prettyprinttree import PrettyPrintTree
+	except ImportError:
+		class PrettyPrintTree:  # type: ignore[override]
+			"""Fallback shim when pretty-print helpers are unavailable."""
+
+			def __init__(self, *args, **kwargs):
+				pass
+
+			def __call__(self, *args, **kwargs):
+				return ""
 
 
 @validate_arguments
@@ -112,22 +124,24 @@ def rename_component_ports(custom_comp: Union[Component, ComponentReference], re
     if you want to pass additional args to rename_function, implement a functor
     custom_comp is the components to modify. the modified component is returned
     """
-    names_to_modify = list()
-    # find ports and get new names
-    for pname, pobj in custom_comp.ports.items():
+    # Build the renamed mapping first, then swap it in.
+    #
+    # Renaming in place (pop old key, insert new key on the same dict) makes the
+    # result depend on dict insertion order: when a port renames onto a name that
+    # is still queued for renaming, one of the two is silently dropped, and which
+    # one survives differs between backends. rename_ports_by_orientation is the
+    # common trigger, since a mirrored port legitimately renames _S -> _N onto a
+    # name another port still holds.
+    renamed = dict()
+    for pname, pobj in list(custom_comp.ports.items()):
         # error checking
         if not pname == pobj.name:
             raise ValueError("component may have an invalid ports dict")
         new_name = rename_function(pname, pobj)
-        names_to_modify.append((pname,new_name))
-    # modify names
-    for namepair in names_to_modify:
-        if namepair[0] in custom_comp.ports.keys():
-            portobj = custom_comp.ports.pop(namepair[0])
-            portobj.name = namepair[1]
-            custom_comp.ports[namepair[1]] = portobj
-        else:
-            raise KeyError("name "+str(namepair[0])+" not in component ports")
+        pobj.name = new_name
+        renamed[new_name] = pobj
+    custom_comp.ports.clear()
+    custom_comp.ports.update(renamed)
     # returns modified component/component ref
     return custom_comp
 
@@ -489,7 +503,6 @@ def print_port_tree_all_cells() -> list:
 	from glayout.flow.routing.c_route import c_route
 	from glayout.flow.routing.L_route import L_route
 	from glayout.flow.pdk.sky130_mapped import sky130_mapped_pdk as pdk
-	from gdsfactory.port import Port
 	print("saving via_stack, via_array, opamp, mimcap, mimcap_array, tapring, multiplier, nmos, pmos, diff_pair, straight_route, c_route, L_route Ports to txt files")
 	celllist = list()
 	celllist.append(["via_stack",via_stack(pdk, "active_diff","met5")])
